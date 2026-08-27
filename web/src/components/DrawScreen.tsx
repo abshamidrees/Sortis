@@ -23,14 +23,14 @@ export function DrawScreen() {
             The register, live.
           </h1>
           <p className={styles.subhead}>
-            Every slot is a stake and shows its ciphertext handle. The lot descends one level per
-            beat. On resolution one slot turns brass, and only the drawn address can decrypt what is
-            in it.
+            Every slot is a stake in this shard and shows its ciphertext handle. The lot descends
+            one level per beat, halving what is left each time. On resolution one slot turns brass,
+            and only the drawn address can decrypt what is in it.
           </p>
         </div>
 
         <div className={styles.column}>
-          <DrawColumn levels={16} showReplay autoPlay />
+          <DrawColumn levels={6} showReplay autoPlay />
           <p className={styles.caption}>
             Not yet wired to Sepolia. The column runs a local simulation of the walk.
           </p>

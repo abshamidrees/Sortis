@@ -27,8 +27,8 @@ const STEPS = [
   },
   {
     title: "One slot resolves",
-    body: "The walk descends the tree, one encrypted comparison per level, and lands on a leaf. The index stays encrypted. Only the drawn address can decrypt what it holds.",
-    meta: `${HCU.DRAW_DEPTH_AT_5_STAKES.toLocaleString("en-US")} HCU, measured`,
+    body: "The walk descends the shard, one encrypted comparison per level, halving what is left each time. It lands on a leaf and the index stays encrypted. Only the drawn address can decrypt what it holds.",
+    meta: `${HCU.SHARD_CEILING} stakes, ${HCU.WALK[4].depth.toLocaleString("en-US")} HCU`,
   },
 ];
 

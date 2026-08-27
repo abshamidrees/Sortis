@@ -6,92 +6,48 @@ import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 
 /**
  * @title  SortisTwab
- * @notice Encrypted time-weighted balance observations. The weight a stake
- *         carries into a draw is how much money sat in the pool and for how
- *         long, not what the balance happened to be at the draw block.
+ * @notice A stake's own copy of its weight line, so the owner can read what
+ *         they hold and what it is worth without decrypting the register.
  *
- * @dev ---------------------------------------------------------------------
- *      WHY TIME-WEIGHTED
- *      ---------------------------------------------------------------------
- *      If odds tracked the raw balance, anyone could watch for `DrawOpened`,
- *      commit a large stake in the same block, win, and release. Weighting by
- *      time removes the attack without any special-casing: a stake committed a
- *      moment before the draw has been in the pool for zero time and accrues
- *      zero weight, so there is nothing to snipe with.
+ * @dev This file used to carry an accumulator, a lastUpdate, and an accrual
+ *      step that folded `balance * elapsed` in on every balance change. All of
+ *      that is gone, and the reason is worth stating because it was a real
+ *      bug: weight only moved when a stake was touched, so a depositor who
+ *      committed once and left the position alone kept the weight they had at
+ *      their last balance change. For a stake that never changed, that is
+ *      zero. An honest saver had no odds.
  *
- *      ---------------------------------------------------------------------
- *      THE SCALAR MULTIPLY
- *      ---------------------------------------------------------------------
- *      Accrual is `balance * elapsed`. The balance is a ciphertext; the elapsed
- *      time is not, because `block.timestamp` is public and pretending
- *      otherwise would buy nothing. That makes this the SCALAR overload,
- *      `FHE.mul(euint64, uint64)`, and the difference is not small:
+ *      SortisRegister now stores the weight LINE rather than a point:
  *
- *          FheMul scalar    (ct, plaintext)   365,000 HCU
- *          FheMul nonScalar (ct, ct)          596,000 HCU
+ *          weight(T) = intercept + slope * T
  *
- *      63% more expensive for a number that is already public. The scalar form
- *      is used here and everywhere else it fits. Encrypting the multiplier
- *      would also drag `elapsed` into the dependent chain, which is the more
- *      expensive mistake of the two.
+ *      and a balance change of delta at time t moves it by slope += delta,
+ *      intercept -= delta * t. This contract mirrors the same two numbers per
+ *      stake. The slope is just the balance, so only the intercept is extra
+ *      storage, and there is no accrual step at all: weight at any T is one
+ *      scalar multiply and one add, and nothing is ever stale.
  *
- *      ---------------------------------------------------------------------
- *      TIME GRANULARITY, AND WHY IT IS NOT SECONDS
- *      ---------------------------------------------------------------------
- *      Accrual is measured in whole TIME_UNITs, not seconds, because seconds
- *      overflow euint64 at realistic pool sizes. A $10M pool of a 6-decimal
- *      token is 1e13 base units; a year is 3.15e7 seconds; the product is
- *      3.2e20 and euint64 tops out at 1.84e19. In hours the same pool-year is
- *      8.8e16, roughly 200x of headroom, and a decade still fits.
- *
- *      A partial unit is never thrown away: `lastUpdate` advances only by the
- *      whole units consumed, so the remainder is carried into the next accrual.
- *
- *      ---------------------------------------------------------------------
- *      KNOWN LIMITATION -- READ THIS BEFORE WIRING UP SortisDraw
- *      ---------------------------------------------------------------------
- *      Weight accrues only when a balance changes, because that is the only
- *      moment the contract touches the stake. A stake that is committed and
- *      then left alone therefore carries the weight it had at its last
- *      balance change, not the weight it has earned since. A depositor who
- *      commits once and never touches the position again sits at zero weight
- *      until they touch it, which is safe (nobody can snipe) but wrong (an
- *      honest depositor has no odds).
- *
- *      Fixing it properly does not need a loop over stakes. Write the identity
- *
- *          weight_i(T) = accumulator_i + balance_i * (T - lastUpdate_i)
- *                      = (accumulator_i - balance_i * lastUpdate_i)
- *                        + balance_i * T
- *
- *      and note that both bracketed terms are additive over a subtree. Keep
- *      TWO euint64 per register node -- the intercept and the slope -- and any
- *      subtree's exact time-weighted sum at any T is one scalar multiply and
- *      one add, with T plaintext. That doubles `_update` and leaves the walk
- *      untouched. It is the right fix and it is deliberately not in this
- *      commit, because it changes SortisRegister's node shape and that is a
- *      decision to make once, with the draw in front of you.
+ *      The anti-snipe property survives, and survives for a better reason than
+ *      before. Time is counted in whole hours, so a stake committed minutes
+ *      before a draw has slope * T exactly cancelled by its own intercept and
+ *      is worth zero. Not because it was missed by an accrual pass, but
+ *      because it has genuinely been in the pool for no time at all.
  */
 abstract contract SortisTwab is ZamaEthereumConfig {
-    // ---------------------------------------------------------------------
-    // Constants and storage
-    // ---------------------------------------------------------------------
-
-    /// @notice Granularity of accrual. See the overflow note above.
-    uint48 public constant TIME_UNIT = 1 hours;
-
-    struct Observation {
-        /// Confidential balance currently held by the stake.
+    struct Stake {
+        /// Confidential balance. Also the slope of this stake's weight line.
         euint64 balance;
-        /// Integral of balance over time, in balance-units * TIME_UNIT.
-        euint64 twabAccumulator;
-        /// Plaintext. Timestamps are not secret and encrypting them buys nothing.
-        uint48 lastUpdate;
+        /// Intercept of the weight line. Negative in two's complement for any
+        /// stake that has ever held money, which is expected and correct.
+        euint64 intercept;
+        /// Plaintext. When the balance last moved. Display only, and not
+        /// secret: the timing of a transaction is already on chain.
+        uint48 lastChange;
     }
 
-    mapping(address => Observation) private _observations;
+    mapping(address => Stake) private _stakes;
 
-    event StakeAccrued(address indexed owner, uint48 through, uint64 units);
+    event StakeMoved(address indexed owner, uint48 at);
 
     // ---------------------------------------------------------------------
     // Views
@@ -99,40 +55,28 @@ abstract contract SortisTwab is ZamaEthereumConfig {
 
     /**
      * @notice The stake's confidential balance handle.
-     * @dev WORST-CASE HCU DEPTH: 0. Returns a stored handle. Meaningless to
-     *      anyone without an ACL grant, which is why it is safe to expose.
+     * @dev WORST-CASE HCU DEPTH: 0. Returns a stored handle, which is
+     *      meaningless without an ACL grant and therefore safe to expose.
      */
     function confidentialBalanceOf(address owner) public view returns (euint64) {
-        return _observations[owner].balance;
+        return _stakes[owner].balance;
     }
 
     /**
-     * @notice The stake's accrued time-weighted balance handle.
+     * @notice The intercept of this stake's weight line.
      * @dev WORST-CASE HCU DEPTH: 0. Returns a stored handle.
      */
-    function twabOf(address owner) public view returns (euint64) {
-        return _observations[owner].twabAccumulator;
+    function interceptOf(address owner) public view returns (euint64) {
+        return _stakes[owner].intercept;
     }
 
     /**
-     * @notice When this stake last accrued, as a plaintext timestamp.
-     * @dev WORST-CASE HCU DEPTH: 0. Plaintext read. Public on purpose: the
-     *      timing of a balance change is already visible on chain, so hiding
-     *      this accessor would be theatre.
+     * @notice When this stake's balance last moved, as a plaintext timestamp.
+     * @dev WORST-CASE HCU DEPTH: 0. Plaintext read. Zero for a stake that has
+     *      never been opened.
      */
-    function lastUpdateOf(address owner) public view returns (uint48) {
-        return _observations[owner].lastUpdate;
-    }
-
-    /**
-     * @notice Whole TIME_UNITs that would accrue if `owner` were touched now.
-     * @dev WORST-CASE HCU DEPTH: 0. Plaintext arithmetic. Lets the frontend
-     *      show a depositor how much weight is pending without decrypting.
-     */
-    function pendingUnits(address owner) public view returns (uint64) {
-        Observation storage observation = _observations[owner];
-        if (observation.lastUpdate == 0) return 0;
-        return uint64((uint48(block.timestamp) - observation.lastUpdate) / TIME_UNIT);
+    function lastChangeOf(address owner) public view returns (uint48) {
+        return _stakes[owner].lastChange;
     }
 
     // ---------------------------------------------------------------------
@@ -140,83 +84,56 @@ abstract contract SortisTwab is ZamaEthereumConfig {
     // ---------------------------------------------------------------------
 
     /**
-     * @notice Fold elapsed time into the stake's accumulator and return what
-     *         was added, so the caller can push the same delta into the register.
+     * @notice Apply a balance change to a stake's own line.
      *
-     * @dev WORST-CASE HCU DEPTH: 527,000 (10.5% of the 5,000,000 budget).
+     * @dev WORST-CASE HCU DEPTH: 162,000 on top of its inputs. Two adds that
+     *      do not depend on each other, so they cost one add of depth between
+     *      them.
      *
-     *          FHE.mul(balance, units)   365,000   scalar, depth 365,000
-     *          FHE.add(accumulator, .)   162,000   depth 527,000
-     *
-     *      One multiply, one add, exactly as the brief specifies. Both operands
-     *      of the multiply would be ciphertext if `units` were encrypted, which
-     *      would cost 596,000 instead of 365,000 and gain nothing.
-     *
-     *      WORST-CASE GLOBAL HCU: 527,000 plus at most two 32 HCU trivial
-     *      encrypts on a stake's first accrual.
-     *
-     *      Returns a trivial encrypted zero when no whole TIME_UNIT has passed,
-     *      which is also the path a brand-new stake takes. `lastUpdate` is NOT
-     *      advanced in that case, so a sub-unit remainder is carried rather
-     *      than discarded.
+     *      Takes the deltas already computed by
+     *      `SortisRegister._signedDeltas` rather than recomputing them, which
+     *      saves the 365,000 scalar multiply. The register and the stake move
+     *      by exactly the same two numbers, which is what keeps the leaf and
+     *      its owner's copy in agreement.
      */
-    function _accrue(address owner) internal returns (euint64 accrued) {
-        Observation storage observation = _observations[owner];
-        uint48 nowTs = uint48(block.timestamp);
+    function _applyToStake(address owner, euint64 signed, euint64 interceptDelta) internal {
+        Stake storage stake = _stakes[owner];
 
-        // First touch: start the clock, accrue nothing. There is no elapsed
-        // time to weight and no balance to weight it against.
-        if (observation.lastUpdate == 0) {
-            observation.lastUpdate = nowTs;
-            return FHE.asEuint64(0);
-        }
+        euint64 balance = stake.balance;
+        euint64 intercept = stake.intercept;
 
-        uint64 units = uint64((nowTs - observation.lastUpdate) / TIME_UNIT);
-        if (units == 0 || !FHE.isInitialized(observation.balance)) {
-            // Leave lastUpdate alone so the partial unit is not lost.
-            return FHE.asEuint64(0);
-        }
+        euint64 nextBalance = FHE.isInitialized(balance) ? FHE.add(balance, signed) : signed;
+        euint64 nextIntercept = FHE.isInitialized(intercept)
+            ? FHE.add(intercept, interceptDelta)
+            : interceptDelta;
 
-        // THE SCALAR MULTIPLY. `units` is a plaintext uint64, so this resolves
-        // to FHE.mul(euint64, uint64) at 365,000 HCU rather than the
-        // ciphertext-ciphertext overload at 596,000.
-        accrued = FHE.mul(observation.balance, units);
+        stake.balance = nextBalance;
+        stake.intercept = nextIntercept;
+        stake.lastChange = uint48(block.timestamp);
 
-        euint64 updated = FHE.isInitialized(observation.twabAccumulator)
-            ? FHE.add(observation.twabAccumulator, accrued)
-            : accrued;
+        FHE.allowThis(nextBalance);
+        FHE.allowThis(nextIntercept);
+        // The owner grant is what lets the frontend decrypt its own position
+        // client-side. Nobody else is granted, so nobody else can read it.
+        FHE.allow(nextBalance, owner);
+        FHE.allow(nextIntercept, owner);
 
-        observation.twabAccumulator = updated;
-        // Advance by whole units only; the remainder carries forward.
-        observation.lastUpdate = observation.lastUpdate + uint48(units) * TIME_UNIT;
-
-        FHE.allowThis(accrued);
-        FHE.allowThis(updated);
-        FHE.allow(updated, owner);
-
-        emit StakeAccrued(owner, observation.lastUpdate, units);
+        emit StakeMoved(owner, stake.lastChange);
     }
 
     /**
-     * @notice Overwrite a stake's confidential balance.
-     * @dev WORST-CASE HCU DEPTH: 0. Storage write plus two ACL grants, neither
-     *      of which is a coprocessor operation. The owner grant is what lets
-     *      the frontend decrypt its own balance client-side; nobody else is
-     *      granted, so nobody else can read it.
+     * @notice Overwrite a stake's balance directly, keeping its line intact.
+     *
+     * @dev WORST-CASE HCU DEPTH: 0. Storage write plus ACL grants.
+     *
+     *      Used by the release path, where FHESafeMath has already produced
+     *      the post-release balance and re-deriving it from a delta would
+     *      double the work. The intercept is moved separately by
+     *      `_applyToStake` with the delta that was actually applied.
      */
     function _setBalance(address owner, euint64 newBalance) internal {
-        _observations[owner].balance = newBalance;
+        _stakes[owner].balance = newBalance;
         FHE.allowThis(newBalance);
         FHE.allow(newBalance, owner);
-    }
-
-    /**
-     * @notice Start the clock for a stake that has never been touched.
-     * @dev WORST-CASE HCU DEPTH: 0. Plaintext write.
-     */
-    function _startClock(address owner) internal {
-        if (_observations[owner].lastUpdate == 0) {
-            _observations[owner].lastUpdate = uint48(block.timestamp);
-        }
     }
 }

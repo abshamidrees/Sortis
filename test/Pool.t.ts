@@ -89,9 +89,12 @@ async function walletBalance(d: Deployment, who: HardhatEthersSigner): Promise<b
   );
 }
 
-async function registerRoot(d: Deployment, reader: HardhatEthersSigner): Promise<bigint> {
-  await (await d.pool.allowRoot(reader.address)).wait();
-  return fhevm.userDecryptEuint(FhevmType.euint64, await d.pool.root(), d.poolAddress, reader);
+/** Total register weight at the current hour, decrypted. */
+async function registerWeight(d: Deployment, reader: HardhatEthersSigner): Promise<bigint> {
+  const t = await d.pool.timeUnitsNow();
+  await (await d.pool.weightAt(t)).wait();
+  const handle = await d.pool.weightAt.staticCall(t);
+  return fhevm.userDecryptEuint(FhevmType.euint64, handle, d.poolAddress, reader);
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +121,7 @@ describe("SortisPool", function () {
       expect(await walletBalance(d, alice), "wallet after first commit").to.equal(1_000_000n);
       // No time has passed, so no weight has been earned. This is the property
       // that makes a late commit unable to snipe a draw.
-      expect(await registerRoot(d, deployer), "weight at t0").to.equal(0n);
+      expect(await registerWeight(d, deployer), "weight at t0").to.equal(0n);
 
       // --- wait ---------------------------------------------------------
       await advanceHours(5);
@@ -131,7 +134,7 @@ describe("SortisPool", function () {
       // 1,000,000 held for 5 hours. The accrual used the OLD balance, not the
       // new one: crediting the incoming 500,000 for time it had not been in
       // the pool is exactly the snipe the TWAB prevents.
-      expect(await registerRoot(d, deployer), "weight after 5h").to.equal(5_000_000n);
+      expect(await registerWeight(d, deployer), "weight after 5h").to.equal(5_000_000n);
 
       // --- wait ---------------------------------------------------------
       await advanceHours(3);
@@ -142,24 +145,20 @@ describe("SortisPool", function () {
       expect(await stake(d, alice), "stake after release").to.equal(1_100_000n);
       expect(await walletBalance(d, alice), "wallet after release").to.equal(900_000n);
       // 1,500,000 held for a further 3 hours: 5,000,000 + 4,500,000.
-      expect(await registerRoot(d, deployer), "weight after 8h").to.equal(9_500_000n);
+      expect(await registerWeight(d, deployer), "weight after 8h").to.equal(9_500_000n);
     });
 
-    it("carries a sub-hour remainder instead of discarding it", async function () {
+    it("keeps earning for a stake nobody touches", async function () {
       const d = await deploy(deployer);
       await fund(d, alice, 1_000_000n);
       await submit(d, alice, "commit", 1_000_000n);
 
-      // Two touches 30 minutes apart accrue nothing...
-      await advanceHours(0.5);
-      await submit(d, alice, "commit", 0n);
-      expect(await registerRoot(d, deployer), "weight after 30m").to.equal(0n);
-
-      // ...but the second 30 minutes completes the hour, and the first 30 are
-      // still there because lastUpdate never advanced past them.
-      await advanceHours(0.5);
-      await submit(d, alice, "commit", 0n);
-      expect(await registerRoot(d, deployer), "weight after 60m").to.equal(1_000_000n);
+      // Never touched again. Under the old accrue-on-change design this stake
+      // was worth zero forever, which is the bug the weight line fixes.
+      await advanceHours(6);
+      expect(await registerWeight(d, deployer), "after 6h").to.equal(6_000_000n);
+      await advanceHours(6);
+      expect(await registerWeight(d, deployer), "after 12h").to.equal(12_000_000n);
     });
 
     it("weights two stakes in proportion to money and time", async function () {
@@ -178,7 +177,7 @@ describe("SortisPool", function () {
       await submit(d, bob, "commit", 0n);
 
       // Alice: 1,000,000 for 20h. Bob: 1,000,000 for 10h. Two to one.
-      expect(await registerRoot(d, deployer)).to.equal(30_000_000n);
+      expect(await registerWeight(d, deployer)).to.equal(30_000_000n);
     });
   });
 
@@ -249,34 +248,32 @@ describe("SortisPool", function () {
   });
 
   describe("HCU", function () {
-    it("uses the scalar multiply for the time weight, not ciphertext-ciphertext", async function () {
+    it("uses the scalar multiply for the time term, not ciphertext-ciphertext", async function () {
       const d = await deploy(deployer);
       await fund(d, alice, 2_000_000n);
       await submit(d, alice, "commit", 1_000_000n);
-
-      // No accrual: nothing has elapsed.
       await advanceHours(6);
-      const accruing = await submit(d, alice, "commit", 100_000n);
-      const hcu = fhevm.computeTransactionHCU(accruing!);
 
-      // The accrual chain is mul then add. With the scalar overload that is
-      // 365,000 + 162,000 = 527,000; with the ciphertext-ciphertext overload it
-      // would be 596,000 + 162,000 = 758,000. Assert we are on the cheap side
-      // by checking the commit's depth against both candidates.
-      const scalarChain = HCU_MUL_SCALAR + HCU_ADD_CT_CT;
-      const ciphertextChain = HCU_MUL_CIPHERTEXT + HCU_ADD_CT_CT;
+      const receipt = await submit(d, alice, "commit", 100_000n);
+      const hcu = fhevm.computeTransactionHCU(receipt!);
 
-      expect(hcu.maxHCUDepth, "commit depth").to.be.at.least(scalarChain);
-      expect(
-        hcu.maxHCUDepth,
-        "commit depth is consistent with a ciphertext-ciphertext multiply, which it should not be",
-      ).to.be.lessThan(ciphertextChain + HCU_ADD_CT_CT);
+      // A commit's chain does not start at zero: `transferred` is what
+      // ERC-7984 actually moved, and settling that is 207,000 deep before the
+      // register work begins. On top of it sits neg, select, multiply, add.
+      //
+      // The multiplier is a plaintext hour count, so the multiply is the
+      // SCALAR overload at 365,000. With the ciphertext-ciphertext overload at
+      // 596,000 the same commit would be 231,000 deeper, so the equality below
+      // is what catches a regression to the wrong one.
+      const HCU_NEG = 131_000;
+      const HCU_SELECT = 55_000;
+      const TRANSFER_DEPTH = 207_000;
+      const scalarChain = HCU_NEG + HCU_SELECT + HCU_MUL_SCALAR + HCU_ADD_CT_CT;
+      const ciphertextChain = HCU_NEG + HCU_SELECT + HCU_MUL_CIPHERTEXT + HCU_ADD_CT_CT;
 
-      // The multiply itself must appear at exactly the scalar depth.
-      const depths = Object.values(hcu.HCUDepthByHandle);
-      expect(depths, "no handle sits at the scalar multiply depth").to.include(HCU_MUL_SCALAR);
-      expect(depths, "a handle sits at the ciphertext multiply depth").to.not.include(
-        HCU_MUL_CIPHERTEXT,
+      expect(hcu.maxHCUDepth, "commit depth").to.equal(TRANSFER_DEPTH + scalarChain);
+      expect(hcu.maxHCUDepth, "would be deeper with a ciphertext multiply").to.be.lessThan(
+        TRANSFER_DEPTH + ciphertextChain,
       );
     });
 

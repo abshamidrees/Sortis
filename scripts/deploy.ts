@@ -5,12 +5,21 @@ import { join } from "path";
 const { ethers } = hre;
 
 /**
- * Deploys the mock confidential USDT and the pool, then records the addresses
- * in deployments/<network>.json so scripts/cycle.ts can find them.
+ * Deploys one shard: the confidential asset, the pool, the draw, the wrap
+ * queue and the yield adapter, then records the addresses in
+ * deployments/<network>.json so the cycle and draw scripts can find them.
  *
- * Production register height. 2^16 = 65,536 stakes.
+ * SHARD SIZE. A register of height 6 holds 64 stakes, which is the largest a
+ * single-transaction winner-hiding draw can resolve. test/HCU.t.ts measures
+ * that ceiling by sweeping until the walk reverts, and it is set by the
+ * 5,000,000 sequential depth budget rather than by the global one, so it
+ * cannot be raised by splitting the draw across transactions.
+ *
+ * The capacity is the enforcement. Deploying at height 6 means the 65th
+ * depositor is rejected by `RegisterFull` rather than silently pushing the
+ * draw past what it can settle. Scale is more shards, not a bigger tree.
  */
-const DEPTH = 16;
+const DEPTH = 6;
 
 /** Epoch length for the wrap queue. 4 hours on Sepolia so a demo can show one
  *  turn over; mainnet would run longer, which only helps the anonymity set. */

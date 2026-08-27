@@ -2,15 +2,15 @@
  * Every number the site displays, in one place, with its provenance.
  *
  * Section 13 of the brief: every number on the site must be derived from a real
- * call, and if a chart is drawn from measurements it has to say which commit
- * produced them. Nothing here is invented or rounded for effect. Rerun
- * `npm test` at the repo root to reproduce all of it.
+ * call, and a chart drawn from measurements has to say which commit produced
+ * them. Nothing here is invented or rounded for effect. Run `npm test` at the
+ * repo root to reproduce all of it.
  */
 
 export const REPO_URL = "https://github.com/abshamidrees/Sortis";
 
 /** The commit whose `npm test` run produced the figures below. */
-export const MEASUREMENT_COMMIT = "69acb43";
+export const MEASUREMENT_COMMIT = "b741488";
 
 export const HCU = {
   /** FHEVM caps the longest dependent chain in one transaction. */
@@ -27,34 +27,40 @@ export const HCU = {
 
   /**
    * Sequential depth of one commit or release, measured at register sizes
-   * 2^4, 2^8, 2^12 and 2^16. Identical at all four: the update path folds the
-   * sign into the delta once and then adds the same ciphertext to every node,
-   * so the writes are independent of each other rather than chained.
+   * 2^4, 2^8, 2^12 and 2^16. Identical at all four: the update folds the sign
+   * into the delta once and then adds the same two ciphertexts to every node,
+   * so the writes are independent rather than chained.
    */
-  UPDATE_DEPTH: 348_000,
+  UPDATE_DEPTH: 713_000,
 
-  /** Depth the walk adds per tree level, measured between 2^4 and 2^8. */
-  WALK_PER_LEVEL: 240_250,
-  /** Fixed cost of the walk before any level is descended. */
-  WALK_INTERCEPT: 77_032,
+  /** Depth the walk adds per tree level, measured across the sweep. */
+  WALK_PER_LEVEL: 774_500,
 
-  /** Measured. */
-  WALK_AT_2_4: 1_038_032,
-  WALK_AT_2_8: 1_999_032,
-  /** Projected from the measured slope. The global budget stops these running. */
-  WALK_AT_2_12: 2_960_032,
-  WALK_AT_2_16: 3_921_032,
+  /**
+   * The walk, measured by sweeping until the transaction reverts. Depth is
+   * the binding budget, so this ceiling cannot be raised by splitting the
+   * draw across transactions.
+   */
+  WALK: [
+    { stakes: 4, depth: 1_549_000, global: 2_093_192, fits: true },
+    { stakes: 8, depth: 2_370_000, global: 3_461_416, fits: true },
+    { stakes: 16, depth: 3_098_000, global: 5_269_896, fits: true },
+    { stakes: 32, depth: 3_826_000, global: 7_958_888, fits: true },
+    { stakes: 64, depth: 4_647_000, global: 12_408_904, fits: true },
+    { stakes: 128, depth: 5_421_500, global: 20_373_000, fits: false },
+    { stakes: 256, depth: 6_196_000, global: 35_381_000, fits: false },
+  ] as const,
+
+  /** The largest register one transaction can draw from. Measured. */
+  SHARD_CEILING: 64,
 
   /** Measured on a pool over a 2^8 register. */
-  COMMIT_DEPTH: 713_000,
-  COMMIT_GLOBAL: 2_757_064,
-  RELEASE_DEPTH: 713_000,
-  RELEASE_GLOBAL: 3_181_096,
-
-  /** Measured: a draw on a production-depth register holding five stakes. */
-  DRAW_DEPTH_AT_5_STAKES: 1_998_000,
-  DRAW_GLOBAL_AT_5_STAKES: 2_837_192,
+  COMMIT_DEPTH: 920_000,
+  COMMIT_GLOBAL: 4_638_224,
 } as const;
+
+/** Where a linear scan crosses the depth limit and the transaction reverts. */
+export const LINEAR_SCAN_WALL = Math.floor(HCU.DEPTH_LIMIT / HCU.ADD_CT_CT);
 
 /**
  * Deployed addresses, read from the environment.

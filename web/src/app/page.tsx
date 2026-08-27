@@ -42,10 +42,10 @@ export default function Landing() {
             </div>
 
             <div className={styles.column}>
-              <DrawColumn levels={16} loop autoPlay />
+              <DrawColumn levels={6} loop autoPlay />
               <p className={styles.caption}>
-                Sixteen encrypted comparisons resolve one winner from 65,536 stakes. A linear scan
-                over the same register reverts at thirty.
+                One shard, 64 stakes, six encrypted comparisons. A linear scan over the same
+                register reverts at thirty. Scale is more shards, not a bigger tree.
               </p>
             </div>
           </div>

@@ -94,9 +94,12 @@ contract SortisWrapQueue is ZamaEthereumConfig {
     /// @notice When epoch 0 began.
     uint256 public immutable genesis;
 
-    /// @notice Entries credited per settleEpoch call. Bounded by the 20M global
-    ///         HCU budget at roughly 2,760,000 per credit.
-    uint256 public constant MAX_SETTLE_BATCH = 6;
+    /// @notice Entries credited per settleEpoch call.
+    /// @dev Bounded by the 20,000,000 global HCU budget. One credit is a full
+    ///      commit-shaped update of both register trees, about 3,522,000 at
+    ///      register height 8, plus the wrap. Four fits with room; six was the
+    ///      figure before weight became a line and the update doubled.
+    uint256 public constant MAX_SETTLE_BATCH = 4;
 
     mapping(uint256 => Epoch) private _epochs;
 
@@ -204,10 +207,10 @@ contract SortisWrapQueue is ZamaEthereumConfig {
      *      and the batch's credits are independent of each other, so the batch
      *      is as DEEP as a single credit no matter how many it processes.
      *
-     *      WORST-CASE GLOBAL HCU: MAX_SETTLE_BATCH * ~2,760,000, which at six
-     *      is about 16,560,000 and fits under the 20,000,000 cap with room for
-     *      the wrap. That is what sets the batch size; raising it past seven
-     *      reverts with HCUTransactionLimitExceeded.
+     *      WORST-CASE GLOBAL HCU: MAX_SETTLE_BATCH * ~3,522,000 plus the
+     *      wraps, which at four is about 14,100,000 and fits under the
+     *      20,000,000 cap. Raising it reverts with
+     *      HCUTransactionLimitExceeded.
      *
      *      Permissionless on purpose. Anyone can settle an epoch that has
      *      ended, so a depositor is never waiting on an operator to release

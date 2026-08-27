@@ -86,7 +86,7 @@ contract SortisRegisterHarness is SortisRegister {
      *      read back through a call. Read it with `lastWalkResult`.
      */
     function walk(uint64 lot) external {
-        _lastWalkResult = _walk(FHE.asEuint64(lot));
+        _lastWalkResult = _walk(FHE.asEuint64(lot), timeUnitsNow());
         FHE.allow(_lastWalkResult, msg.sender);
     }
 
@@ -97,7 +97,7 @@ contract SortisRegisterHarness is SortisRegister {
      *      the chain. This is the shape SortisDraw will use.
      */
     function walkEncrypted(externalEuint64 lot, bytes calldata inputProof) external {
-        _lastWalkResult = _walk(FHE.fromExternal(lot, inputProof));
+        _lastWalkResult = _walk(FHE.fromExternal(lot, inputProof), timeUnitsNow());
         FHE.allow(_lastWalkResult, msg.sender);
     }
 
@@ -116,8 +116,18 @@ contract SortisRegisterHarness is SortisRegister {
      * @notice Grant `account` decryption rights on the root.
      * @dev WORST-CASE HCU DEPTH: 0. ACL grant only.
      */
-    function allowRoot(address account) external {
-        _allowRoot(account);
+    function allowRoots(address account) external {
+        _allowRoots(account);
+    }
+
+    /**
+     * @notice Total encrypted weight at hour `t`, granted to the caller.
+     * @dev WORST-CASE HCU DEPTH: 527,000. One scalar multiply, one add.
+     */
+    function weightAt(uint64 t) external returns (euint64 weight) {
+        weight = _rootWeightAt(t);
+        FHE.allowThis(weight);
+        FHE.allow(weight, msg.sender);
     }
 
     /**
@@ -125,7 +135,9 @@ contract SortisRegisterHarness is SortisRegister {
      * @dev WORST-CASE HCU DEPTH: 0. ACL grant only. Lets a test verify subtree
      *      sums, which is how the update path is checked for correctness.
      */
-    function allowNode(uint256 node, address account) external {
-        FHE.allow(nodeAt(node), account);
+    function allowNodeWeight(uint256 node, uint64 t, address account) external returns (euint64 w) {
+        w = _weightAt(node, t);
+        FHE.allowThis(w);
+        FHE.allow(w, account);
     }
 }

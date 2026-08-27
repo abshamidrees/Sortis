@@ -12,19 +12,23 @@ Sortis is confidential prize-linked savings. You deposit, you cannot lose your p
 
 The draw itself stays publicly verifiable. Anyone can check that the winning ticket was drawn from the committed tree root at the committed block. They just cannot see what is in the tree.
 
-**The one sentence that matters:** every other entry in this bounty will encrypt the balances and then scan them linearly to pick a winner, which stops working past roughly forty depositors because of the FHEVM sequential depth budget. Sortis draws in O(log N).
+**The one sentence that matters:** every other entry in this bounty will encrypt the balances and then scan them linearly, which reverts at 30 depositors because of the FHEVM sequential depth budget. Sortis descends an encrypted tree instead, which draws from 64 in one transaction, and scales by adding shards rather than by growing the tree.
+
+**Why 64 and not 65,536.** Hiding the winner is what costs. A draw that reveals nothing about which leaf it picked has to touch every leaf it could have picked, because a node that was never read is a node the answer is provably not under. That is a property of the disclosure requirement, not of any implementation, and it means the search is Omega(N) however the tree is arranged. Depth is what runs out first, at 128 stakes, so the largest power of two that settles in one transaction is 64. `test/HCU.t.ts` measures that by sweeping until the transaction reverts.
+
+**Sharding is the answer, and it is a better one than a big tree.** A shard is a pool of at most 64 stakes with its own register, its own prize and its own draw. Shards are independent: they settle in parallel, a failure in one cannot touch another, and a depositor's anonymity set is their shard rather than the whole protocol. Ten thousand depositors is 157 shards, not one register that cannot be drawn from. The register's capacity enforces the bound, so the 65th depositor to a shard is rejected rather than silently pushing the draw past what it can settle.
 
 **Core primitives (locked, do not redesign):**
 
 |||
 |-|-|
-|Encrypted weight tree|A Fenwick/segment tree whose nodes are `euint64` sums of time-weighted balances. Draw walks root to leaf, one encrypted comparison per level. Deposits and withdrawals update one path.|
-|Encrypted TWAB|Time-weighted average balance observations stored encrypted, so odds reflect how long money sat in the pool, not what was in it at the draw block. Late deposits cannot snipe a draw.|
-|Native draw randomness|`FHE.randEuint64()` on the host chain. No oracle, no VRF, no external dependency to defend.|
-|Winner-only disclosure|The prize ciphertext gets an ACL grant scoped to the drawn address. The public gets the tree root, the block, and the proof the walk was executed. Only the winner decrypts the number.|
+|Encrypted weight register|A segment tree of `euint64` nodes. Two of them: weight over time is a line, so each node stores an intercept and a slope, and any subtree's exact time-weighted total at any moment is one scalar multiply and one add. Deposits and withdrawals update one path. Draws descend it.|
+|The weight line|A balance change of `delta` at hour `t` moves the line by `slope += delta` and `intercept -= delta * t`. Nothing accrues, nothing goes stale, and a stake nobody touches for a year is worth exactly what a year of sitting there earns.|
+|Native draw randomness|`FHE.randEuint64()` on the host chain, reduced modulo the published total with `FHE.rem`. No oracle, no VRF, no external dependency to defend.|
+|Winner-only disclosure|The resolved leaf stays an encrypted `euint16` and is never granted to anyone. The prize is claimed, not pushed: a claimant compares their own leaf against it under encryption and receives the prize or an encrypted zero, and the two are indistinguishable from outside.|
 |Epoch-batched wrapping|Wraps into cUSDT are queued and settled in epoch batches so the wrap step does not link a public USDT address to a confidential deposit.|
 
-**Vocabulary. Use these exact words in UI, docs, contracts and errors.** Money is **committed**, not deposited. A user's position is a **stake**. The tree is the **register**. A prize round is a **draw**. The randomness is the **lot**. The winner is **drawn**. Money leaving is **released**. Never say "ticket", "odds", "lottery", "jackpot" or "gamble". This is savings with a prize, and the language has to carry that or the product reads as a casino.
+**Vocabulary. Use these exact words in UI, docs, contracts and errors.** Money is **committed**, not deposited. A user's position is a **stake**. The tree is the **register**. A pool of at most 64 stakes is a **shard**. A prize round is a **draw**. The randomness is the **lot**. The winner is **drawn**. Money leaving is **released**. Never say "ticket", "odds", "lottery", "jackpot" or "gamble". This is savings with a prize, and the language has to carry that or the product reads as a casino.
 
 \---
 
@@ -37,17 +41,27 @@ FHEVM enforces two limits per transaction:
 * **Global complexity: 20,000,000 HCU.** Operations that can run in parallel.
 * **Sequential depth: 5,000,000 HCU.** The longest chain of operations that must run in order.
 
-Exceeding either reverts the transaction. A dependent `FHE.add(euint64)` costs roughly 133,000 HCU, so the sequential chain caps out around 37 dependent adds. Comparisons cost more.
+Exceeding either reverts the transaction. A dependent `FHE.add(euint64, euint64)` costs 162,000 HCU, so a chain of them caps out at 30. Comparisons cost 146,000, a scalar multiply 365,000, a select 55,000.
 
 **Consequences that shape the design:**
 
 1. No loop over depositors in a single transaction. Ever. Not for the draw, not for accounting, not for aggregate calculation.
 2. The register must be a tree, and the tree must be updated one path at a time, not rebuilt.
-3. Depth is the budget you run out of first. Prefer wide parallel work over deep dependent chains. Two independent 20-op chains cost nothing against the depth limit that one 40-op chain does.
-4. Anything that genuinely needs more work than one transaction allows gets **split into checkpointed transactions with the intermediate state stored as ciphertext handles**. The docs name this as the sanctioned escape hatch. Use it for the epoch settlement path, not the draw.
-5. Every contract function must have a stated worst-case HCU depth in a comment above it. If you cannot state it, you do not understand it yet.
+3. Prefer wide parallel work over deep dependent chains. Two independent 20-op chains cost nothing against the depth limit that one 40-op chain does. This is why `_update` folds the sign into the delta once and then adds the same ciphertexts to every node on the path: the writes become independent of each other and bill against the global budget instead.
+4. Anything that genuinely needs more work than one transaction allows gets **split into checkpointed transactions with the intermediate state stored as ciphertext handles**. Use it for the epoch settlement path. **It does not help the draw**, and the reason is the next point.
+5. **Depth is what binds the draw, and depth cannot be checkpointed.** Too much work can be split across transactions. A chain that is too long cannot be, because the next link needs the previous one's result. The walk costs about 774,500 HCU of depth per tree level, so it settles 64 stakes at 93% of budget and reverts at 128. That is a hard ceiling and it is why the protocol shards.
+6. Every contract function must have a stated worst-case HCU depth in a comment above it. If you cannot state it, you do not understand it yet.
 
-Write `test/HCU.t.ts` early. It asserts the depth cost of `commit`, `release`, and `draw` at register sizes 2^4, 2^8, 2^12 and 2^16. That test file is a submission asset, not just internal hygiene. It is the proof that the architecture is real.
+**The numbers, measured.** `test/HCU.t.ts` is a submission asset, not internal hygiene. It asserts the depth and global cost of an update at register sizes 2^4 through 2^16, and finds the draw ceiling by sweeping until the transaction reverts rather than assuming where it will:
+
+|Stakes|Draw depth|Of 5,000,000|Draw global|Of 20,000,000|Result|
+|-|-|-|-|-|-|
+|16|3,098,000|62.0%|5,269,896|26.4%|fits|
+|32|3,826,000|76.5%|7,958,888|39.8%|fits|
+|64|4,647,000|92.9%|12,408,904|62.0%|fits, and this is the shard size|
+|128|-|-|-|-|reverts, depth|
+
+A commit or a release is a flat 713,000 of depth at every register size, because the update path is parallel rather than deep.
 
 \---
 
@@ -77,53 +91,70 @@ One Next.js codebase, three hostnames via Host-header middleware. No paths. No f
 
 ## 4\. Contract architecture
 
-Five contracts. Keep them small.
+Five contracts. Keep them small. One deployment of them is one shard.
 
 ### `SortisRegister.sol`
 
-The encrypted Fenwick tree. This is the core and the thing worth reading.
+The encrypted weight register. This is the core and the thing worth reading.
 
 ```
-euint64\[] private \_nodes;        // 1-indexed, size 2^DEPTH \* 2
-uint256 public constant DEPTH = 16;
+mapping(uint256 => euint64) private \_intercept;   // 1-indexed heap
+mapping(uint256 => euint64) private \_slope;       // same shape, same paths
+uint8 public immutable DEPTH;                     // 6 for a shard
+uint48 public immutable GENESIS;                  // time zero for the line
 mapping(address => uint256) private \_leafOf;
 ```
 
-* `\_update(uint256 leaf, euint64 delta, ebool isAdd)` walks leaf to root, `FHE.select` on `isAdd` to add or subtract. DEPTH dependent ops. State the HCU cost.
-* `\_walk(euint64 lot) returns (uint256 leafIndex)` walks root to leaf. At each level, one `FHE.lt(lot, leftChildSum)` producing an `ebool`, then `FHE.select` to pick the branch and `FHE.select` to subtract the left sum from the lot when going right. **The branch index itself must stay encrypted until the end**, so accumulate it as an `euint16` built from the level bits rather than branching in Solidity. Solidity cannot branch on an `ebool` and attempting to is the single most common FHEVM mistake.
-* `root()` returns `\_nodes\[1]`, the encrypted total weight.
+**Two trees, because weight is a line.** A stake's weight is money multiplied by the hours it sat there, which is piecewise linear, so store it as a line rather than a point:
+
+```
+weight(T) = intercept + slope \* T
+```
+
+A balance change of `delta` at hour `t` moves it by `slope += delta` and `intercept -= delta \* t`. Both terms are additive over a subtree, so the exact time-weighted total of any subtree at any T is one scalar multiply and one add. **There is no accrual step and nothing goes stale.** An earlier design accrued `balance \* elapsed` into a single accumulator on every balance change, which meant a stake nobody touched carried the weight it had at its last change, which for a stake that never changed is zero. Safe against sniping, and useless to an honest saver.
+
+Time is whole hours since deployment, not unix seconds. `slope \* T` has to fit in a `euint64`, and a ten million dollar pool of a 6-decimal token against a unix timestamp is 1.8e22 against a ceiling of 1.8e19. Hourly granularity is also the anti-snipe property: a stake committed minutes before a draw has been in the pool for zero whole hours and is worth zero.
+
+* `\_update(uint256 leaf, euint64 delta, ebool isAdd)` walks leaf to root. Folds the sign into the delta once with `FHE.select`, then adds the SAME two ciphertexts to every node, so the writes are independent and the path is parallel rather than deep. **713,000 HCU of depth, flat at every register size.**
+* `\_walk(euint64 lot, uint64 t) returns (euint16)` descends root to leaf. At each level, one `FHE.lt` against the left child's weight, one `FHE.select` to subtract when going right, one `FHE.select` to fold the branch bit into an encrypted index. **The branch index stays encrypted throughout.** Solidity cannot branch on an `ebool` and attempting to is the single most common FHEVM mistake.
+* **The gap the spec has to close.** Reading the left child's weight needs a plaintext node index, and keeping the index encrypted forbids one. The resolution is an oblivious read: at level k the descent could be on any of 2^k nodes, so load every candidate and collapse them with the branch bits already decided. Correct, never branches on ciphertext, and Omega(N) for the reason in section 0. Two trees means two reads per level.
+* `rootIntercept()` and `rootSlope()` return the two root handles. They are content-derived, so together they fingerprint the whole register, and `SortisDraw` uses them to check the tree did not move between the two draw transactions.
+* `activeHeight()` is the height of the subtree that actually holds stakes. The walk descends only that, so a shard with eight stakes costs what eight stakes cost, not what its capacity costs.
 
 The walk is the submission. Comment it line by line, explain the HCU accounting inline, and make it the thing a judge lands on first when they open the repo.
 
 ### `SortisTwab.sol`
 
-Encrypted time-weighted balance observations.
+A stake's own copy of its weight line, so an owner can read what they hold and what it is worth without decrypting the register.
 
-* Per stake: `euint64 balance`, `euint64 twabAccumulator`, `uint48 lastUpdate` (plaintext, timestamps are not secret).
-* On any balance change, accrue `balance \* (now - lastUpdate)` into the accumulator before applying the change. One multiply, one add. The multiplier is plaintext so it is `FHE.mul(euint64, uint64)`, which is far cheaper than ciphertext-ciphertext multiply. Use the scalar overload everywhere you can, it matters.
-* The weight written into the register is the TWAB, not the raw balance.
+* Per stake: `euint64 balance` (which is the slope), `euint64 intercept`, `uint48 lastChange` (plaintext, timestamps are not secret).
+* Moved by the same two deltas the register moves by, computed once by `\_signedDeltas` and handed to both. Recomputing per destination would pay the 365,000 scalar multiply twice and risk the two copies disagreeing across an hour boundary.
+* The multiplier is plaintext so it is `FHE.mul(euint64, uint64)`, 365,000 against 596,000 for ciphertext-ciphertext. Use the scalar overload everywhere you can, it matters.
 
 ### `SortisPool.sol`
 
-The user-facing contract.
+The user-facing contract. Inherits the register and the stake ledger, so the handles they pass never need cross-contract ACL grants.
 
-* `commit(externalEuint64 amount, bytes proof)` pulls cUSDT via `confidentialTransferFrom`, updates TWAB, updates the register.
-* `release(externalEuint64 amount, bytes proof)` the reverse. Uses `FHESafeMath` so an over-withdrawal produces an encrypted failure flag and a no-op rather than a revert, because reverting on an encrypted comparison would itself leak the balance. Write a comment saying exactly that, it is a detail that shows you understand the threat model.
+* `commit(externalEuint64 amount, bytes proof)` pulls cUSDT via `confidentialTransferFrom`, then moves the line. A short commit is already safe: ERC-7984 returns the amount actually moved rather than reverting.
+* `release(externalEuint64 amount, bytes proof)` the reverse. Uses `FHESafeMath.tryDecrease` so an over-withdrawal produces an encrypted failure flag and a no-op rather than a revert, because reverting on an encrypted comparison would itself leak the balance: a revert proves the balance is below the requested amount, and a binary search reads any balance in about sixty-four transactions. `tryDecrease` and not `trySub`, because `trySub` returns zero on failure and would wipe a stake.
 * `stakeOf(address)` returns the ciphertext handle. The frontend decrypts client-side for the owner only.
+* `walkForDraw` and `publishRootForDraw` are the only doors the draw contract gets, and `creditFromQueue` the only one the wrap queue gets.
 
 ### `SortisDraw.sol`
 
-* `openDraw()` snapshots `register.root()`, emits `DrawOpened(drawId, rootHandle, block.number)`.
-* `drawLot(uint256 drawId)` calls `FHE.randEuint64()`, reduces it modulo the root via `FHE.rem`, walks the register, resolves a leaf, grants the prize ciphertext to that leaf's owner via `FHE.allow`, emits `Drawn(drawId, lotHandle, resolvedLeafHandle)`.
-* Two transactions, not one. Opening commits the root before the lot exists, which is what makes the draw honest: the pool operator cannot see the lot and then reshape the register.
+* `openDraw()` captures the reference hour, publishes the register's total weight at it, records both root handles and the block, and harvests the prize. **No randomness exists yet.**
+* `drawLot(uint256 drawId, bytes abiEncodedTotal, bytes proof)` verifies the total against the KMS with `FHE.checkSignatures`, calls `FHE.randEuint64()`, reduces it modulo the verified total with `FHE.rem`, walks the register at the committed hour, and stores the encrypted leaf.
+* Two transactions, not one. Opening commits the tree before the lot exists, which is what makes the draw honest: the operator cannot see the lot and then reshape the register. `drawLot` additionally refuses if either root handle moved since the open, so this is checked rather than trusted.
+* **The denominator has to be public.** `FHE.rem` and `FHE.randEuint64(bound)` both take a plaintext bound, and there is no ciphertext-ciphertext remainder, so the total weight is published and KMS-verified. It is an aggregate over every stake, and a draw whose denominator nobody can check is not verifiable.
+* **The prize is claimed, not pushed.** `FHE.allow` takes a plaintext address and the walk resolves to an encrypted index, so granting from `drawLot` would require decrypting the winner. `claimPrize(drawId)` compares the caller's own leaf against the encrypted result and transfers the prize or an encrypted zero. Every claimant runs identical code and moves an identically shaped ciphertext.
 * The prize amount comes from `yieldAdapter.harvest()` and is public. **The prize size is not a secret. Who won it is.** Do not encrypt the pot; encrypting it removes the public verifiability the bounty explicitly asks for and gains nothing.
 
 ### `SortisWrapQueue.sol`
 
-* `enqueue(uint256 usdtAmount)` takes public USDT, holds it.
-* `settleEpoch()` wraps the whole epoch's USDT into cUSDT in one call and credits stakes in a single batch, so onchain the link between a public USDT sender and a confidential stake is one-to-many across the epoch rather than one-to-one.
+* `enqueue(uint256 usdtAmount)` takes public USDT and holds it, performing no FHE work at all. The public leg and the confidential leg have to be in different transactions or the batching buys nothing.
+* `settleEpoch(uint256 epoch)` wraps and credits a bounded batch and advances a cursor, called repeatedly until the epoch drains. `MAX_SETTLE_BATCH` is 4, set by the 20,000,000 global budget at about 3,522,000 per credit. This is the checkpointed-transaction escape hatch, used where it is allowed.
 * Epoch length is a public parameter. Default 4 hours on Sepolia so it is demonstrable, and document that mainnet would run longer.
-* Include a short honest note in the docs: batching raises the cost of linkage, it does not eliminate it, and a depositor who is the only participant in an epoch gets no anonymity set. Stating the limitation is worth more to a judge than overclaiming.
+* Include a short honest note in the docs: batching raises the cost of linkage, it does not eliminate it. A depositor alone in an epoch gets no anonymity set, amounts are not mixed so sizes can be matched back, and settlement emits an event per credit naming the owner. Stating the limitation is worth more to a judge than overclaiming.
 
 \---
 

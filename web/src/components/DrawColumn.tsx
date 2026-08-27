@@ -7,20 +7,15 @@ import styles from "./DrawColumn.module.css";
  * The draw column. The signature element, per docs/BRIEF.md section 6.
  *
  * A kleroterion plate: a channel down the left edge, a column of slots on the
- * right. Each slot is a stake and shows its ciphertext handle in --seal --
- * the real handle, not a lock icon, not asterisks, not a blur. The lot
- * descends the channel as a brass token, ONE LEVEL PER BEAT, sixteen beats for
- * a full-depth register. Each beat eliminates a candidate. One slot survives
- * and turns brass.
+ * right. Each slot is a stake and shows its ciphertext handle in --seal, the
+ * real handle, not a lock icon, not asterisks, not a blur. The lot descends
+ * the channel as a brass token, ONE LEVEL PER BEAT, and each beat halves what
+ * is left. One slot survives and turns brass.
  *
- * WHY SIXTEEN BEATS AND ONLY SIXTEEN SLOTS
- * The slots are a window onto the register, not the whole of it. A depth-16
- * register holds 65,536 stakes, and the walk halves the candidate set at every
- * level: 65,536 -> 32,768 -> ... -> 1 in sixteen steps. The readout under the
- * plate counts that down, which is where the O(log N) argument actually lands.
- * Watching sixteen beats resolve 65,536 candidates is the entire pitch, and a
- * linear scan over the same register would need 65,536 of them -- and would
- * revert at about thirty, which is the wall the protocol is built around.
+ * IT SHOWS A WHOLE SHARD, NOT A SAMPLE OF ONE. A shard holds 2^levels stakes
+ * and that is exactly how many slots are drawn, so the halving on screen is
+ * the halving in the register rather than an illustration of it. At the
+ * shipped shard size of 64 that is six beats: 64, 32, 16, 8, 4, 2, 1.
  *
  * The motion is deliberately DISCRETE. The token snaps between levels rather
  * than sliding through them, because each step is a tree level and easing them
@@ -28,9 +23,9 @@ import styles from "./DrawColumn.module.css";
  */
 
 export type DrawColumnProps = {
-  /** Tree depth. Sixteen in production; also the number of beats. */
+  /** Tree height. A shard is 6, which is 64 stakes and six beats. */
   levels?: number;
-  /** Ciphertext handles, one per visible slot. Generated if omitted. */
+  /** Ciphertext handles, one per slot. Generated if omitted. */
   handles?: string[];
   /** Which slot is drawn. Derived from the seed if omitted. */
   resolvedIndex?: number;
@@ -40,8 +35,8 @@ export type DrawColumnProps = {
   autoPlay?: boolean;
   /**
    * The decrypted value, shown in place on the drawn slot. Supply this only
-   * for the session that actually holds the drawn address -- everyone else
-   * keeps looking at the handle, which is the whole disclosure model.
+   * for the session that holds the drawn address. Everyone else keeps looking
+   * at the handle, which is the whole disclosure model.
    */
   revealed?: string | null;
   /** Show a replay control. Off for the hero loop, on for the app. */
@@ -50,12 +45,12 @@ export type DrawColumnProps = {
   className?: string;
 };
 
-/** Number of slot rows drawn on the plate. */
-const VISIBLE_SLOTS = 16;
+/** Beat length, matching --beat in the token file. */
+const BEAT_MS = 110;
 
 /**
  * Deterministic pseudo-random. Real randomness here would produce different
- * handles on the server and the client and blow up hydration, so everything
+ * handles on the server and the client and break hydration, so everything
  * visual is derived from a seed.
  */
 function mulberry32(seed: number) {
@@ -69,14 +64,14 @@ function mulberry32(seed: number) {
 }
 
 /** A plausible truncated ciphertext handle: 0x7f2a…c091. */
-function makeHandle(rand: () => number): string {
+function makeHandle(rand: () => number, short: boolean): string {
   const hex = (n: number) =>
     Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(rand() * 16)]).join("");
-  return `0x${hex(4)}…${hex(4)}`;
+  return short ? `0x${hex(3)}…${hex(3)}` : `0x${hex(4)}…${hex(4)}`;
 }
 
 export function DrawColumn({
-  levels = 16,
+  levels = 6,
   handles,
   resolvedIndex,
   loop = false,
@@ -86,38 +81,37 @@ export function DrawColumn({
   onResolve,
   className,
 }: DrawColumnProps) {
-  const seed = useMemo(() => {
-    // Stable across server and client. Derived from the inputs that change the
-    // picture, so two columns on one page do not look identical.
-    return levels * 7919 + (resolvedIndex ?? 3) * 104729 + (handles?.length ?? 0) * 31;
-  }, [levels, resolvedIndex, handles?.length]);
+  const slotCount = 2 ** levels;
+
+  /**
+   * A real kleroterion had several columns of slots cut into one slab, and a
+   * shard needs them for the same reason the Athenians did: sixty-four rows in
+   * a single column is taller than a screen. Slots fill column-major, so the
+   * index order runs down the first column and continues down the second, and
+   * the surviving range stays contiguous on screen. The first halving keeps
+   * exactly one column, which is the clearest frame of the whole animation.
+   */
+  const columns = slotCount > 32 ? 2 : 1;
+  const rows = Math.ceil(slotCount / columns);
+  const pitch = rows > 24 ? 17 : rows > 16 ? 20 : 26;
+  const compact = pitch < 24;
+
+  const seed = useMemo(
+    () => levels * 7919 + (resolvedIndex ?? 3) * 104729 + (handles?.length ?? 0) * 31,
+    [levels, resolvedIndex, handles?.length],
+  );
 
   const generatedHandles = useMemo(() => {
     const rand = mulberry32(seed);
-    return Array.from({ length: VISIBLE_SLOTS }, () => makeHandle(rand));
-  }, [seed]);
+    return Array.from({ length: slotCount }, () => makeHandle(rand, compact));
+  }, [seed, slotCount, compact]);
 
-  const slotHandles = handles?.length ? handles.slice(0, VISIBLE_SLOTS) : generatedHandles;
+  const slotHandles = handles?.length ? handles.slice(0, slotCount) : generatedHandles;
 
   const winner = useMemo(() => {
-    if (resolvedIndex !== undefined) return Math.min(Math.max(resolvedIndex, 0), VISIBLE_SLOTS - 1);
-    return Math.floor(mulberry32(seed + 1)() * VISIBLE_SLOTS);
-  }, [resolvedIndex, seed]);
-
-  /**
-   * The order candidates fall out in. Every slot except the winner, shuffled,
-   * so the elimination does not read as a top-to-bottom sweep -- that would
-   * look like the linear scan this design exists to argue against.
-   */
-  const eliminationOrder = useMemo(() => {
-    const rand = mulberry32(seed + 2);
-    const order = Array.from({ length: VISIBLE_SLOTS }, (_, i) => i).filter((i) => i !== winner);
-    for (let i = order.length - 1; i > 0; i--) {
-      const j = Math.floor(rand() * (i + 1));
-      [order[i], order[j]] = [order[j], order[i]];
-    }
-    return order;
-  }, [seed, winner]);
+    if (resolvedIndex !== undefined) return Math.min(Math.max(resolvedIndex, 0), slotCount - 1);
+    return Math.floor(mulberry32(seed + 1)() * slotCount);
+  }, [resolvedIndex, seed, slotCount]);
 
   // -1 is "not started". Beats run 0..levels-1; the last one resolves.
   const [beat, setBeat] = useState(-1);
@@ -136,13 +130,11 @@ export function DrawColumn({
 
   const resolved = beat >= levels - 1;
 
-  // Drive the beats. One timer per beat rather than an interval, so a change of
-  // props cannot leave a stale schedule running.
   useEffect(() => {
     if (!mounted || !autoPlay) return;
 
-    // Reduced motion: no descent at all. Jump straight to the resolved state.
-    // Not a fast animation, not a crossfade -- the final frame, immediately.
+    // Reduced motion: no descent at all. The resolved frame, immediately. Not
+    // a faster animation and not a crossfade.
     if (reducedMotion) {
       setBeat(levels - 1);
       return;
@@ -152,12 +144,10 @@ export function DrawColumn({
       const start = window.setTimeout(() => setBeat(0), 240);
       return () => window.clearTimeout(start);
     }
-
     if (beat < levels - 1) {
-      const next = window.setTimeout(() => setBeat((b) => b + 1), 110);
+      const next = window.setTimeout(() => setBeat((b) => b + 1), BEAT_MS);
       return () => window.clearTimeout(next);
     }
-
     if (loop) {
       const restart = window.setTimeout(() => {
         resolveNotified.current = false;
@@ -179,51 +169,76 @@ export function DrawColumn({
     setBeat(reducedMotion ? levels - 1 : -1);
   }, [reducedMotion, levels]);
 
-  /** How many slots have fallen out by now. The final beat resolves instead. */
-  const eliminatedCount = beat < 0 ? 0 : Math.min(beat, eliminationOrder.length);
-  const eliminated = useMemo(
-    () => new Set(eliminationOrder.slice(0, eliminatedCount)),
-    [eliminationOrder, eliminatedCount],
-  );
+  /**
+   * The surviving range after `beat` halvings. This is the real binary search:
+   * at each level the half that does not contain the drawn leaf is discarded,
+   * which is exactly what `_walk` does with an encrypted comparison.
+   */
+  const surviving = useMemo(() => {
+    if (beat < 0) return { lo: 0, hi: slotCount };
+    let lo = 0;
+    let hi = slotCount;
+    for (let k = 0; k <= beat && hi - lo > 1; k++) {
+      const mid = (lo + hi) >> 1;
+      if (winner < mid) hi = mid;
+      else lo = mid;
+    }
+    return { lo, hi };
+  }, [beat, slotCount, winner]);
 
-  /** Candidates left in the real register: 2^levels halved once per beat. */
-  const candidatesRemaining = beat < 0 ? 2 ** levels : 2 ** Math.max(0, levels - 1 - beat);
+  /** Candidates left in the shard. Halves once per beat, 64 down to 1. */
+  const candidatesRemaining = beat < 0 ? slotCount : Math.max(1, surviving.hi - surviving.lo);
 
-  // While the walk runs, the token tracks the level it is on. When the walk
-  // resolves it settles onto the drawn slot. A token that finished at the
-  // bottom of the channel while the brass slot sat higher up would read as
-  // two unrelated things happening rather than one descent landing.
-  const tokenY = resolved ? winner : beat < 0 ? 0 : Math.min(beat, VISIBLE_SLOTS - 1);
+  // While the walk runs the token tracks the level it is on. When it resolves
+  // it settles onto the drawn slot, because a token that finished at the
+  // bottom of the channel while the brass slot sat higher up would read as two
+  // unrelated things rather than one descent landing.
+  // The channel spans the plate's height, which is `rows` tall regardless of
+  // how many columns the slots are cut into, so the token is positioned in row
+  // units. On resolution it settles level with the drawn slot's row.
+  const tokenY = resolved
+    ? winner % rows
+    : beat < 0
+      ? 0
+      : Math.min(Math.round(((beat + 1) / levels) * (rows - 1)), rows - 1);
 
   return (
     <div className={className}>
       <div
         className={styles.plate}
-        style={{ ["--slot-pitch" as string]: "26px", ["--token-y" as string]: tokenY }}
+        data-compact={compact}
+        style={{
+          ["--slot-pitch" as string]: `${pitch}px`,
+          ["--slot-rows" as string]: rows,
+          ["--token-y" as string]: tokenY,
+        }}
         role="img"
         aria-label={
           resolved
-            ? `Draw resolved. Sixteen levels descended, one slot of ${(2 ** levels).toLocaleString("en-US")} drawn.`
-            : `Draw in progress. Level ${Math.max(beat, 0) + 1} of ${levels}.`
+            ? `Draw resolved. ${levels} levels descended, one slot of ${slotCount} drawn.`
+            : `Draw in progress. Level ${Math.max(beat, 0) + 1} of ${levels}, ${candidatesRemaining} candidates left.`
         }
       >
         <div className={styles.channel} aria-hidden="true">
           <div className={styles.channelTrack} />
-          {Array.from({ length: VISIBLE_SLOTS }, (_, i) => (
+          {Array.from({ length: levels }, (_, i) => (
             <div
               key={i}
               className={styles.tick}
-              style={{ ["--tick-i" as string]: i }}
-              data-passed={beat >= 0 && i <= tokenY}
+              style={{
+                ["--tick-i" as string]: Math.round((i / Math.max(levels - 1, 1)) * (rows - 1)),
+              }}
+              data-passed={beat >= 0 && i <= beat}
             />
           ))}
           <div className={styles.token} data-resolved={resolved} />
         </div>
 
-        <div className={styles.slots}>
+        <div className={styles.slots} data-columns={columns}>
           {slotHandles.map((handle, i) => {
             const isDrawn = resolved && i === winner;
-            const state = isDrawn ? "drawn" : eliminated.has(i) ? "eliminated" : "sealed";
+            const alive = i >= surviving.lo && i < surviving.hi;
+            const state = isDrawn ? "drawn" : alive ? "sealed" : "eliminated";
             return (
               <div
                 key={i}
@@ -231,10 +246,10 @@ export function DrawColumn({
                 data-state={state}
                 data-flash={isDrawn && !reducedMotion}
               >
-                <span className={styles.slotIndex}>{i}</span>
-                {/* The handle stays put. A drawn slot that the viewer can
-                    decrypt shows the value beside it rather than replacing it,
-                    so the encrypted identity of the row is never lost. */}
+                {compact ? null : <span className={styles.slotIndex}>{i}</span>}
+                {/* The handle stays put. A drawn slot the viewer can decrypt
+                    shows the value beside it rather than replacing it, so the
+                    encrypted identity of the row is never lost. */}
                 <span className={styles.slotHandle}>{handle}</span>
                 {isDrawn && revealed ? <span className={styles.slotRevealed}>{revealed}</span> : null}
               </div>
@@ -248,7 +263,7 @@ export function DrawColumn({
           </span>
           <span className={styles.readoutValue} data-resolved={resolved}>
             {candidatesRemaining.toLocaleString("en-US")}
-            {candidatesRemaining === 1 ? " candidate" : " candidates"}
+            {candidatesRemaining === 1 ? " stake" : " stakes"}
           </span>
           {showReplay ? (
             <button type="button" className={styles.replay} onClick={replay}>

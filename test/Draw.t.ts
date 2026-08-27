@@ -128,18 +128,21 @@ describe("SortisDraw", function () {
 
       await (await rig.yieldAdapter.accrue(50_000n)).wait();
 
-      const rootBefore = await rig.pool.root();
+      const interceptBefore = await rig.pool.rootIntercept();
+      const slopeBefore = await rig.pool.rootSlope();
+
       const receipt = await (await rig.draw.openDraw()).wait();
       const [rootHandle, openedAtBlock, prize] = await rig.draw.drawInfo(1);
 
       expect(openedAtBlock).to.equal(BigInt(receipt!.blockNumber));
       expect(prize, "prize is public and harvested at open").to.equal(50_000n);
+      expect(rootHandle, "a total was committed").to.not.equal(ethers.ZeroHash);
 
-      // The committed handle is the root as it stood, and opening did not move
-      // it. Handles are content-derived, so equality here is proof the tree was
-      // not reshaped in the same breath as the commitment to it.
-      expect(rootHandle, "committed handle is the live root").to.equal(rootBefore);
-      expect(await rig.pool.root(), "openDraw must not touch the register").to.equal(rootBefore);
+      // Opening a draw reads the register and must not move it. Handles are
+      // content-derived, so equality on both trees is proof the tree was not
+      // reshaped in the same breath as the commitment to it.
+      expect(await rig.pool.rootIntercept(), "intercept tree untouched").to.equal(interceptBefore);
+      expect(await rig.pool.rootSlope(), "slope tree untouched").to.equal(slopeBefore);
 
       // openDraw does perform FHE work, but none of it is the draw's: it is the
       // yield adapter minting the prize into this contract, which settles the
@@ -153,22 +156,14 @@ describe("SortisDraw", function () {
       const rig = await deployRig(deployer);
       await commit(rig, alice, 1_000_000n);
       await advanceHours(5);
-      await commit(rig, alice, 0n);
 
-      // The root only becomes publicly decryptable when openDraw publishes it,
-      // so open a throwaway draw first purely to unlock the handle. openDraw
-      // does not touch the register, so the handle -- and therefore the proof
-      // -- is still valid for the draw opened below.
-      await (await rig.draw.openDraw()).wait();
-      const rootHandle = await rig.pool.root();
-      const { encoded, proof } = await kmsProof(rootHandle);
-
-      // Build the proof up front for a second reason: with automine off, gas
-      // estimation runs against a pending state where draw 2 does not exist
-      // yet, so both sends need an explicit gasLimit to skip estimation.
+      // The committed total is a fresh ciphertext per open, so a proof cannot
+      // be built for a draw that does not exist yet. It does not need to be:
+      // drawLot checks the block before it checks the proof, so a same-block
+      // call fails on the block guard whatever it is handed.
       await ethers.provider.send("evm_setAutomine", [false]);
       const openTx = await rig.draw.openDraw({ gasLimit: 3_000_000 });
-      const lotTx = await rig.draw.drawLot(2, encoded, proof, { gasLimit: 8_000_000 });
+      const lotTx = await rig.draw.drawLot(1, "0x", "0x", { gasLimit: 8_000_000 });
       await ethers.provider.send("evm_mine", []);
       await ethers.provider.send("evm_setAutomine", [true]);
 
@@ -180,6 +175,12 @@ describe("SortisDraw", function () {
       // Same block as the open means the opener could have seen the lot before
       // broadcasting. That has to fail.
       expect(lotReceipt!.status, "a lot drawn in the opening block must fail").to.equal(0);
+
+      // And one block later the same draw settles, which is what isolates the
+      // block guard from every other reason a lot might be refused.
+      await advanceHours(1);
+      const settled = await drawLot(rig, 1n, deployer);
+      expect(settled!.status).to.equal(1);
     });
 
     it("voids the draw if the register moved after the open", async function () {
@@ -542,10 +543,10 @@ describe("SortisWrapQueue", function () {
 
     await advanceHours(5);
 
-    // MAX_SETTLE_BATCH is 6, sized by the 20,000,000 global HCU cap.
+    // MAX_SETTLE_BATCH is 4, sized by the 20,000,000 global HCU cap.
     const first = await (await rig.queue.settleEpoch(epoch)).wait();
     let [, settled, , closed] = await rig.queue.epochInfo(epoch);
-    expect(settled).to.equal(6n);
+    expect(settled).to.equal(4n);
     expect(closed).to.equal(false);
 
     const firstHcu = fhevm.computeTransactionHCU(first!);
@@ -562,6 +563,7 @@ describe("SortisWrapQueue", function () {
         `global ${firstHcu.globalHCU.toLocaleString("en-US")}\n`,
     );
 
+    await (await rig.queue.settleEpoch(epoch)).wait();
     await (await rig.queue.settleEpoch(epoch)).wait();
     [, settled, , closed] = await rig.queue.epochInfo(epoch);
     expect(settled).to.equal(9n);

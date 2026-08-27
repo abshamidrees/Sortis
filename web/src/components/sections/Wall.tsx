@@ -1,198 +1,244 @@
 import styles from "./section.module.css";
-import { HCU, MEASUREMENT_COMMIT, REPO_URL } from "@/lib/measurements";
+import { HCU, LINEAR_SCAN_WALL, MEASUREMENT_COMMIT, REPO_URL } from "@/lib/measurements";
 
 /**
  * Section 2 of the landing page. The wall.
  *
- * The one section that carries the whole argument: a linear draw is a chain of
- * dependent additions and dies at about thirty depositors, and a tree draw is
- * not. Every number here comes from test/HCU.t.ts, and the commit that
- * produced them is printed under the chart so a reader can rerun it.
+ * Everything here is measured by test/HCU.t.ts, and the commit that produced
+ * the numbers is printed under the chart so a reader can rerun it.
+ *
+ * The chart plots SEQUENTIAL DEPTH, because that is the budget that stops both
+ * designs. A linear scan is one dependent chain and crosses the limit at 30
+ * depositors. The walk is a shorter chain per level and crosses at 128. Sortis
+ * ships shards of 64, which is the last power of two underneath.
  */
 
-// Chart geometry. Computed rather than hand-placed so the curves cannot drift
-// away from the numbers they claim to plot.
 const W = 680;
 const H = 380;
-const PLOT = { left: 60, right: 650, top: 24, bottom: 320 };
-const MAX_LOG2 = 16; // x axis runs 2^0 to 2^16 depositors
-const MAX_HCU = 6_000_000; // y axis, a little above the 5,000,000 limit
+const PLOT = { left: 64, right: 650, top: 24, bottom: 316 };
+const MAX_LOG2 = 8; // x axis runs 1 to 256 stakes
+const MAX_HCU = 6_000_000;
 
-const xFor = (depositors: number) =>
-  PLOT.left + (Math.log2(depositors) / MAX_LOG2) * (PLOT.right - PLOT.left);
+const xFor = (stakes: number) =>
+  PLOT.left + (Math.log2(stakes) / MAX_LOG2) * (PLOT.right - PLOT.left);
 
 const yFor = (hcu: number) =>
   PLOT.bottom - (Math.min(hcu, MAX_HCU) / MAX_HCU) * (PLOT.bottom - PLOT.top);
 
 /** A linear scan accumulates into one ciphertext: N dependent adds. */
-const linearHCU = (depositors: number) => depositors * HCU.ADD_CT_CT;
+const linearDepth = (stakes: number) => stakes * HCU.ADD_CT_CT;
 
-/** The walk is a fixed chain per level, and levels are log2 of the stakes. */
-const treeHCU = (depositors: number) =>
-  HCU.WALK_INTERCEPT + HCU.WALK_PER_LEVEL * Math.log2(Math.max(depositors, 1));
+/**
+ * The walk. Measured at 774,500 per level, and levels are log2 of the stakes,
+ * so it is a straight line against a log x axis.
+ */
+const walkDepth = (stakes: number) => HCU.WALK_PER_LEVEL * Math.log2(Math.max(stakes, 1));
 
-/** Where the linear curve crosses the limit and the transaction reverts. */
-const REVERTS_AT = Math.floor(HCU.DEPTH_LIMIT / HCU.ADD_CT_CT);
-
-function pathFor(fn: (n: number) => number, stopAtLimit: boolean) {
+function pathFor(fn: (n: number) => number) {
   const points: string[] = [];
-  for (let step = 0; step <= 160; step++) {
-    const depositors = 2 ** ((step / 160) * MAX_LOG2);
-    const value = fn(depositors);
-    if (stopAtLimit && value > MAX_HCU) break;
-    points.push(`${xFor(depositors).toFixed(1)},${yFor(value).toFixed(1)}`);
+  for (let step = 0; step <= 200; step++) {
+    const stakes = 2 ** ((step / 200) * MAX_LOG2);
+    const value = fn(stakes);
+    if (value > MAX_HCU) break;
+    points.push(`${xFor(stakes).toFixed(1)},${yFor(value).toFixed(1)}`);
   }
   return `M ${points.join(" L ")}`;
 }
 
 const Y_GRID = [1, 2, 3, 4, 5, 6].map((m) => m * 1_000_000);
-const X_TICKS = [0, 4, 8, 12, 16].map((p) => 2 ** p);
+const X_TICKS = [1, 4, 16, 64, 256];
 
 export function Wall() {
+  const fits = HCU.WALK.filter((row) => row.fits);
+  const ceiling = fits[fits.length - 1];
+  const firstFail = HCU.WALK.find((row) => !row.fits)!;
+
   return (
     <section className={styles.section} id="the-wall">
       <div className={styles.inner}>
         <div className={styles.head}>
           <span className={styles.number}>02</span>
           <p className="eyebrow">The constraint</p>
-          <h2 className={styles.title}>Every other design hits a wall at thirty depositors.</h2>
+          <h2 className={styles.title}>A linear draw dies at thirty depositors.</h2>
           <p className={styles.standfirst}>
             FHEVM caps the longest chain of dependent operations in a transaction at 5,000,000 HCU.
-            Encrypting balances and scanning them puts every depositor in that one chain. Sortis
-            keeps the weights in a tree and descends it, so the chain grows with the depth of the
-            tree rather than with the number of people in it.
+            Encrypting balances and scanning them puts every depositor in that one chain, so it
+            stops working almost immediately. Sortis descends a tree instead, which puts one short
+            chain per level in the budget rather than one per person.
           </p>
         </div>
 
         <div className={styles.chartScroll}>
-        <svg
-          className={styles.chart}
-          viewBox={`0 0 ${W} ${H}`}
-          role="img"
-          aria-label={`Sequential HCU against depositor count. A linear scan crosses the 5,000,000 limit at ${REVERTS_AT} depositors. The tree walk reaches ${Math.round(treeHCU(65536)).toLocaleString("en-US")} HCU at 65,536 depositors and never approaches the limit.`}
-        >
-          {/* horizontal grid */}
-          {Y_GRID.map((value) => (
-            <g key={value}>
-              <line
-                x1={PLOT.left}
-                x2={PLOT.right}
-                y1={yFor(value)}
-                y2={yFor(value)}
-                stroke="var(--rule)"
-                strokeWidth="1"
-              />
+          <svg
+            className={styles.chart}
+            viewBox={`0 0 ${W} ${H}`}
+            role="img"
+            aria-label={`Sequential HCU against stake count. A linear scan crosses the 5,000,000 limit at ${LINEAR_SCAN_WALL} depositors. The Sortis walk crosses at ${firstFail.stakes}, and shards are capped at ${ceiling.stakes} stakes, the last power of two underneath.`}
+          >
+            {Y_GRID.map((value) => (
+              <g key={value}>
+                <line
+                  x1={PLOT.left}
+                  x2={PLOT.right}
+                  y1={yFor(value)}
+                  y2={yFor(value)}
+                  stroke="var(--rule)"
+                  strokeWidth="1"
+                />
+                <text
+                  x={PLOT.left - 10}
+                  y={yFor(value) + 4}
+                  textAnchor="end"
+                  fill="var(--graphite)"
+                  fontFamily="var(--font-data)"
+                  fontSize="10"
+                >
+                  {value / 1_000_000}M
+                </text>
+              </g>
+            ))}
+
+            {X_TICKS.map((n) => (
               <text
-                x={PLOT.left - 10}
-                y={yFor(value) + 4}
-                textAnchor="end"
+                key={n}
+                x={xFor(n)}
+                y={PLOT.bottom + 20}
+                textAnchor={n === 1 ? "start" : n === 256 ? "end" : "middle"}
                 fill="var(--graphite)"
                 fontFamily="var(--font-data)"
                 fontSize="10"
               >
-                {value / 1_000_000}M
+                {n}
               </text>
-            </g>
-          ))}
-
-          {/* x ticks, one per four tree levels */}
-          {X_TICKS.map((n) => (
+            ))}
             <text
-              key={n}
-              x={xFor(n)}
-              y={PLOT.bottom + 20}
-              textAnchor={n === 1 ? "start" : n === 65536 ? "end" : "middle"}
+              x={PLOT.left}
+              y={PLOT.bottom + 38}
               fill="var(--graphite)"
-              fontFamily="var(--font-data)"
+              fontFamily="var(--font-body)"
               fontSize="10"
+              letterSpacing="0.08em"
             >
-              {n.toLocaleString("en-US")}
+              STAKES IN THE REGISTER
             </text>
-          ))}
-          <text
-            x={PLOT.left}
-            y={PLOT.bottom + 38}
-            fill="var(--graphite)"
-            fontFamily="var(--font-body)"
-            fontSize="10"
-            letterSpacing="0.08em"
-          >
-            DEPOSITORS
-          </text>
+            <text
+              x={PLOT.left - 10}
+              y={PLOT.top - 8}
+              textAnchor="end"
+              fill="var(--graphite)"
+              fontFamily="var(--font-body)"
+              fontSize="10"
+              letterSpacing="0.08em"
+            >
+              SEQUENTIAL HCU
+            </text>
 
-          {/* the limit */}
-          <line
-            x1={PLOT.left}
-            x2={PLOT.right}
-            y1={yFor(HCU.DEPTH_LIMIT)}
-            y2={yFor(HCU.DEPTH_LIMIT)}
-            stroke="var(--fault)"
-            strokeWidth="1.5"
-            strokeDasharray="4 3"
-          />
-          <text
-            x={PLOT.right}
-            y={yFor(HCU.DEPTH_LIMIT) - 8}
-            textAnchor="end"
-            fill="var(--fault)"
-            fontFamily="var(--font-data)"
-            fontSize="11"
-          >
-            5,000,000 HCU. Transaction reverts here.
-          </text>
+            {/* the limit */}
+            <line
+              x1={PLOT.left}
+              x2={PLOT.right}
+              y1={yFor(HCU.DEPTH_LIMIT)}
+              y2={yFor(HCU.DEPTH_LIMIT)}
+              stroke="var(--fault)"
+              strokeWidth="1.5"
+              strokeDasharray="4 3"
+            />
+            <text
+              x={PLOT.right}
+              y={yFor(HCU.DEPTH_LIMIT) - 8}
+              textAnchor="end"
+              fill="var(--fault)"
+              fontFamily="var(--font-data)"
+              fontSize="11"
+            >
+              5,000,000 HCU. Transaction reverts here.
+            </text>
 
-          {/* linear scan, stopped where it leaves the chart */}
-          <path d={pathFor(linearHCU, true)} fill="none" stroke="var(--fault)" strokeWidth="2" />
+            {/* linear scan */}
+            <path d={pathFor(linearDepth)} fill="none" stroke="var(--fault)" strokeWidth="2" />
+            <circle cx={xFor(LINEAR_SCAN_WALL)} cy={yFor(HCU.DEPTH_LIMIT)} r="4" fill="var(--fault)" />
+            <text
+              x={xFor(LINEAR_SCAN_WALL) + 9}
+              y={yFor(HCU.DEPTH_LIMIT) + 20}
+              fill="var(--fault)"
+              fontFamily="var(--font-data)"
+              fontSize="11"
+            >
+              {LINEAR_SCAN_WALL} depositors
+            </text>
 
-          {/* the crossing */}
-          <circle
-            cx={xFor(REVERTS_AT)}
-            cy={yFor(HCU.DEPTH_LIMIT)}
-            r="4"
-            fill="var(--fault)"
-          />
-          <text
-            x={xFor(REVERTS_AT) + 10}
-            y={yFor(HCU.DEPTH_LIMIT) + 22}
-            fill="var(--fault)"
-            fontFamily="var(--font-data)"
-            fontSize="11"
-          >
-            {REVERTS_AT} depositors
-          </text>
+            {/* the walk */}
+            <path d={pathFor(walkDepth)} fill="none" stroke="var(--brass)" strokeWidth="2" />
 
-          {/* the walk */}
-          <path d={pathFor(treeHCU, false)} fill="none" stroke="var(--brass)" strokeWidth="2" />
-          <circle cx={xFor(65536)} cy={yFor(treeHCU(65536))} r="4" fill="var(--brass)" />
-          <text
-            x={PLOT.right}
-            y={yFor(treeHCU(65536)) - 12}
-            textAnchor="end"
-            fill="var(--brass)"
-            fontFamily="var(--font-data)"
-            fontSize="11"
-          >
-            {Math.round(treeHCU(65536)).toLocaleString("en-US")} HCU at 65,536
-          </text>
+            {/* measured points */}
+            {fits.map((row) => (
+              <circle
+                key={row.stakes}
+                cx={xFor(row.stakes)}
+                cy={yFor(row.depth)}
+                r="3"
+                fill="var(--brass)"
+              />
+            ))}
 
-          {/* axes */}
-          <line
-            x1={PLOT.left}
-            x2={PLOT.left}
-            y1={PLOT.top}
-            y2={PLOT.bottom}
-            stroke="var(--graphite)"
-            strokeWidth="1"
-          />
-          <line
-            x1={PLOT.left}
-            x2={PLOT.right}
-            y1={PLOT.bottom}
-            y2={PLOT.bottom}
-            stroke="var(--graphite)"
-            strokeWidth="1"
-          />
-        </svg>
+            {/* the shipped shard size */}
+            <line
+              x1={xFor(ceiling.stakes)}
+              x2={xFor(ceiling.stakes)}
+              y1={yFor(ceiling.depth)}
+              y2={PLOT.bottom}
+              stroke="var(--brass)"
+              strokeWidth="1"
+              strokeDasharray="2 3"
+            />
+            <circle cx={xFor(ceiling.stakes)} cy={yFor(ceiling.depth)} r="5" fill="var(--brass)" />
+            <text
+              x={xFor(ceiling.stakes) - 10}
+              y={yFor(ceiling.depth) - 12}
+              textAnchor="end"
+              fill="var(--brass)"
+              fontFamily="var(--font-data)"
+              fontSize="11"
+            >
+              {ceiling.stakes} stakes, {(ceiling.depth / 1_000_000).toFixed(2)}M. One shard.
+            </text>
+
+            {/* where the walk itself runs out */}
+            <circle
+              cx={xFor(firstFail.stakes)}
+              cy={yFor(HCU.DEPTH_LIMIT)}
+              r="3"
+              fill="none"
+              stroke="var(--brass)"
+              strokeWidth="1.5"
+            />
+            <text
+              x={xFor(firstFail.stakes) + 8}
+              y={yFor(HCU.DEPTH_LIMIT) - 10}
+              fill="var(--brass)"
+              fontFamily="var(--font-data)"
+              fontSize="11"
+            >
+              {firstFail.stakes} reverts
+            </text>
+
+            <line
+              x1={PLOT.left}
+              x2={PLOT.left}
+              y1={PLOT.top}
+              y2={PLOT.bottom}
+              stroke="var(--graphite)"
+              strokeWidth="1"
+            />
+            <line
+              x1={PLOT.left}
+              x2={PLOT.right}
+              y1={PLOT.bottom}
+              y2={PLOT.bottom}
+              stroke="var(--graphite)"
+              strokeWidth="1"
+            />
+          </svg>
         </div>
 
         <div className={styles.chartLegend}>
@@ -202,7 +248,7 @@ export function Wall() {
           </span>
           <span className={styles.legendItem}>
             <span className={styles.legendSwatch} style={{ background: "var(--brass)" }} />
-            Sortis, one encrypted comparison per tree level
+            Sortis, one encrypted descent per tree level
           </span>
         </div>
 
@@ -211,7 +257,7 @@ export function Wall() {
             <div className={styles.panelHead}>
               <span className={styles.panelTitle}>Linear draw</span>
               <span className={styles.panelVerdict} data-tone="fault">
-                Reverts past {REVERTS_AT}
+                Reverts past {LINEAR_SCAN_WALL}
               </span>
             </div>
             <div className={styles.rows}>
@@ -220,21 +266,21 @@ export function Wall() {
                 <span className={styles.rowValue}>{HCU.ADD_CT_CT.toLocaleString("en-US")} HCU</span>
               </div>
               <div className={styles.row}>
-                <span className={styles.rowLabel}>At 256 depositors</span>
+                <span className={styles.rowLabel}>At 64 stakes</span>
                 <span className={styles.rowValue} data-tone="fault">
-                  {linearHCU(256).toLocaleString("en-US")} HCU
+                  {linearDepth(64).toLocaleString("en-US")} HCU
                 </span>
               </div>
               <div className={styles.row}>
-                <span className={styles.rowLabel}>At 65,536 depositors</span>
+                <span className={styles.rowLabel}>At 256 stakes</span>
                 <span className={styles.rowValue} data-tone="fault">
-                  {linearHCU(65536).toLocaleString("en-US")} HCU
+                  {linearDepth(256).toLocaleString("en-US")} HCU
                 </span>
               </div>
               <div className={styles.row}>
-                <span className={styles.rowLabel}>Scales to</span>
+                <span className={styles.rowLabel}>Draws from</span>
                 <span className={styles.rowValue} data-tone="fault">
-                  {REVERTS_AT} depositors
+                  {LINEAR_SCAN_WALL} stakes
                 </span>
               </div>
             </div>
@@ -242,9 +288,9 @@ export function Wall() {
 
           <div className={styles.panel}>
             <div className={styles.panelHead}>
-              <span className={styles.panelTitle}>Sortis</span>
+              <span className={styles.panelTitle}>Sortis, one shard</span>
               <span className={styles.panelVerdict} data-tone="brass">
-                Inside the budget
+                {pctOf(ceiling.depth, HCU.DEPTH_LIMIT)} of budget
               </span>
             </div>
             <div className={styles.rows}>
@@ -255,15 +301,9 @@ export function Wall() {
                 </span>
               </div>
               <div className={styles.row}>
-                <span className={styles.rowLabel}>At 256 depositors</span>
+                <span className={styles.rowLabel}>Draw at 64 stakes</span>
                 <span className={styles.rowValue} data-tone="brass">
-                  {HCU.WALK_AT_2_8.toLocaleString("en-US")} HCU
-                </span>
-              </div>
-              <div className={styles.row}>
-                <span className={styles.rowLabel}>At 65,536 depositors</span>
-                <span className={styles.rowValue} data-tone="brass">
-                  {HCU.WALK_AT_2_16.toLocaleString("en-US")} HCU
+                  {ceiling.depth.toLocaleString("en-US")} HCU
                 </span>
               </div>
               <div className={styles.row}>
@@ -272,18 +312,28 @@ export function Wall() {
                   {HCU.UPDATE_DEPTH.toLocaleString("en-US")} HCU, flat
                 </span>
               </div>
+              <div className={styles.row}>
+                <span className={styles.rowLabel}>Draws from</span>
+                <span className={styles.rowValue} data-tone="brass">
+                  {ceiling.stakes} stakes per shard
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
         <p className={styles.provenance}>
           Measured by <code>test/HCU.t.ts</code> against the FHEVM mock coprocessor at commit{" "}
-          <a href={`${REPO_URL}/commit/${MEASUREMENT_COMMIT}`}>{MEASUREMENT_COMMIT}</a>. Walk figures
-          at 256 depositors are measured; at 65,536 they are projected from the measured per-level
-          slope, because the global HCU budget stops that transaction before it finishes. Run{" "}
-          <code>npm test</code> to reproduce every number on this page.
+          <a href={`${REPO_URL}/commit/${MEASUREMENT_COMMIT}`}>{MEASUREMENT_COMMIT}</a>, which sweeps
+          register sizes until the walk reverts rather than assuming where it will. Depth is the
+          budget that binds, not global work, so the ceiling cannot be raised by splitting a draw
+          across transactions. Run <code>npm test</code> to reproduce every number on this page.
         </p>
       </div>
     </section>
   );
+}
+
+function pctOf(value: number, limit: number): string {
+  return `${((value / limit) * 100).toFixed(0)}%`;
 }

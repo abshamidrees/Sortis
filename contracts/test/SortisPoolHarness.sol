@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.27;
 
+import {FHE, euint64} from "@fhevm/solidity/lib/FHE.sol";
 import {SortisPool} from "../SortisPool.sol";
 
 /**
@@ -22,7 +23,17 @@ contract SortisPoolHarness is SortisPool {
      * @notice Grant `account` the right to decrypt the register root.
      * @dev WORST-CASE HCU DEPTH: 0. ACL grant only.
      */
-    function allowRoot(address account) external {
-        _allowRoot(account);
+    function allowRoots(address account) external {
+        _allowRoots(account);
+    }
+
+    /**
+     * @notice Total encrypted weight at hour `t`, granted to the caller.
+     * @dev WORST-CASE HCU DEPTH: 527,000. One scalar multiply, one add.
+     */
+    function weightAt(uint64 t) external returns (euint64 weight) {
+        weight = _rootWeightAt(t);
+        FHE.allowThis(weight);
+        FHE.allow(weight, msg.sender);
     }
 }

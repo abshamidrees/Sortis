@@ -7,80 +7,102 @@ position is visible to anyone.
 Built for the Zama Developer Program, Mainnet Season 4. See [docs/BRIEF.md](docs/BRIEF.md)
 for the full design.
 
-## Where the interesting part is
+## The thesis, in one paragraph
 
-Everything turns on two FHEVM limits, enforced per transaction:
+Every other entry will encrypt balances and scan them, which reverts at 30
+depositors because of the FHEVM sequential depth budget. Sortis descends an
+encrypted tree instead. That draws from 64 stakes in a single transaction, and
+scales by adding shards rather than by growing the tree. The 64 is not a
+target, it is measured: hiding the winner forces the search to touch every leaf
+it could have picked, so the cost is linear in stakes however the tree is
+arranged, and depth runs out at 128.
+
+## The budgets
+
+FHEVM enforces two limits per transaction. Exceeding either reverts.
 
 | budget | limit | what it measures |
 | --- | --- | --- |
 | global complexity | 20,000,000 HCU | work that can run in parallel |
 | sequential depth | 5,000,000 HCU | the longest dependent chain |
 
-A confidential prize pool built the obvious way encrypts balances and scans
-them, which is N dependent adds and dies at about 30 depositors. Sortis keeps
-the weights in an encrypted segment tree instead.
-
-`test/HCU.t.ts` measures the real cost of every operation against those budgets
-at register sizes 2^4 through 2^16 and prints the numbers. It is the proof the
-architecture is real, and it is worth reading before the contracts.
+`test/HCU.t.ts` measures everything below and is a submission asset, not
+internal hygiene. It does not assume where the ceiling is, it sweeps until the
+transaction reverts.
 
 ```bash
 npm test
 ```
 
-### The update path is parallel, not deep
+### Commit and release: flat, whatever the register size
 
-Maintaining a segment tree the obvious way recomputes each parent from its
-children, so every parent depends on the child written a step earlier: a chain
-of 17 adds, 2,754,000 HCU of sequential depth, 55% of the budget.
-
-`SortisRegister._update` folds the sign into the delta once and adds that single
-ciphertext to every node on the path. Each node then depends only on itself and
-that delta, so the adds are mutually independent and bill against the global
-budget instead. **Sequential depth is a flat 348,000 regardless of tree height:**
+The obvious way to maintain a segment tree recomputes each parent from its
+children, so every parent depends on the child written a step earlier: 17 adds
+in a chain. `_update` folds the sign into the delta once and adds the same two
+ciphertexts to every node on the path, so the writes are independent of each
+other and bill against the global budget instead.
 
 | register | seq depth | of budget | global HCU | of budget |
 | --- | --- | --- | --- | --- |
-| 2^4 | 348,000 | 6.96% | 996,000 | 4.98% |
-| 2^8 | 348,000 | 6.96% | 1,644,000 | 8.22% |
-| 2^12 | 348,000 | 6.96% | 2,292,000 | 11.46% |
-| 2^16 | 348,000 | 6.96% | 2,940,000 | 14.70% |
+| 2^4 | 713,000 | 14.26% | 2,226,000 | 11.13% |
+| 2^8 | 713,000 | 14.26% | 3,522,000 | 17.61% |
+| 2^12 | 713,000 | 14.26% | 4,818,000 | 24.09% |
+| 2^16 | 713,000 | 14.26% | 6,114,000 | 30.57% |
 
-### The draw cannot be both O(log N) and winner-hiding
+### The draw: where the ceiling is, and why
 
-This is the finding the HCU suite surfaced, and it constrains the product.
-
-Descending the tree needs the left-child sum at each level. Reading it requires
-a plaintext node index; keeping the winner secret requires the index to stay
-encrypted. `SortisRegister._walk` resolves this with an oblivious read: at level
-k the descent could be on any of 2^k nodes, so it loads every candidate and
-folds them with the branch bits already decided.
-
-That is correct and never branches on a ciphertext, but it is Ω(N), and not
-because of how it is written. A computation that hides which leaf it chose must
-touch every leaf it could have chosen.
-
-| register | seq depth | of budget | global HCU | of budget | |
+| stakes | seq depth | of budget | global HCU | of budget | result |
 | --- | --- | --- | --- | --- | --- |
-| 2^4 | 1,038,032 | 20.76% | 2,556,192 | 12.78% | measured |
-| 2^8 | 1,999,032 | 39.98% | 17,585,952 | 87.93% | measured |
-| 2^12 | ~2,960,032 | 59.20% | ~230,604,000 | 1153% | reverts |
-| 2^16 | ~3,921,032 | 78.42% | ~3,611,628,000 | 18058% | reverts |
+| 16 | 3,098,000 | 61.96% | 5,269,896 | 26.35% | fits |
+| 32 | 3,826,000 | 76.52% | 7,958,888 | 39.79% | fits |
+| 64 | 4,647,000 | 92.94% | 12,408,904 | 62.04% | fits, and this is the shard |
+| 128 | reverts | | | | depth budget |
 
-Depth is comfortable everywhere. The **global** budget is what binds, and it
-caps a single-transaction winner-hiding draw at roughly 2^8 = 256 stakes. The
-reverts are `HCUTransactionLimitExceeded`, never `HCUTransactionDepthLimitExceeded`.
-The test asserts that distinction, because too much work is splittable across
-checkpointed transactions and a chain that is too long is not.
+**Depth binds, not global work.** That distinction decides what can be done
+about it: too much work splits across checkpointed transactions, a chain that
+is too long does not. So 64 is a hard ceiling, and the protocol shards rather
+than pretending otherwise.
+
+The cost per level is about 774,500 HCU, and 527,000 of that is turning a
+node's intercept and slope into a weight. That is the price of a weight line
+that never goes stale, and it is why this ceiling is lower than an earlier
+single-tree version's.
+
+## Weight is a line, not a stale point
+
+A stake's weight is money multiplied by the hours it sat there. Accruing
+`balance * elapsed` into an accumulator on every balance change looks right and
+is wrong: weight then only moves when the stake is touched, so a depositor who
+commits once and leaves the position alone carries the weight they had at their
+last change. For a stake that never changed, that is zero. Safe against
+sniping, and useless to an honest saver.
+
+Weight over time is piecewise linear, so store the line:
+
+```
+weight(T) = intercept + slope * T
+```
+
+A balance change of `delta` at hour `t` moves it by `slope += delta` and
+`intercept -= delta * t`. Both terms are additive over a subtree, so the exact
+time-weighted total of any subtree at any T is one scalar multiply and one add.
+No accrual pass, no keeper, nothing stale.
+
+Time is whole hours since deployment, not unix seconds: `slope * T` has to fit
+in a `euint64` and a ten million dollar pool against a unix timestamp is 1.8e22
+against a ceiling of 1.8e19. Hourly granularity is also the anti-snipe
+property, and for a better reason than before. A stake committed minutes before
+a draw is worth zero because it has genuinely been in the pool for no time, not
+because an accrual pass missed it.
 
 ## Contracts
 
 | file | what it does |
 | --- | --- |
-| [`SortisRegister.sol`](contracts/SortisRegister.sol) | Encrypted segment tree. `_update` (O(log N), flat depth) and `_walk` (oblivious descent). |
-| [`SortisTwab.sol`](contracts/SortisTwab.sol) | Time-weighted balance observations. Scalar `FHE.mul` for the time multiplier. |
+| [`SortisRegister.sol`](contracts/SortisRegister.sol) | Two encrypted segment trees, intercept and slope. `_update` and the oblivious `_walk`. |
+| [`SortisTwab.sol`](contracts/SortisTwab.sol) | A stake's own copy of its weight line. Scalar `FHE.mul` for the time term. |
 | [`SortisPool.sol`](contracts/SortisPool.sol) | `commit` and `release`. Over-withdrawal is an encrypted no-op, never a revert. |
-| [`SortisDraw.sol`](contracts/SortisDraw.sol) | `openDraw` then `drawLot`, two transactions. Native `FHE.randEuint64`, winner never revealed. |
+| [`SortisDraw.sol`](contracts/SortisDraw.sol) | `openDraw` then `drawLot`, two transactions. Native randomness, winner never revealed. |
 | [`SortisWrapQueue.sol`](contracts/SortisWrapQueue.sol) | Epoch-batched wrapping of public USDT into confidential stakes. |
 
 Every function states its worst-case HCU depth in a comment above it.
@@ -88,105 +110,85 @@ Every function states its worst-case HCU depth in a comment above it.
 ### Why an over-withdrawal does not revert
 
 Reverting on an encrypted comparison publishes the comparison. A `release(X)`
-that reverts proves the caller's balance is below X and one that succeeds proves
-it is at or above X, so an attacker binary-searches any balance in about 64
-transactions. `SortisPool.release` uses `FHESafeMath.tryDecrease`, which returns
-an encrypted success flag and leaves the balance untouched on failure. A refused
-release transfers zero, writes back the same balance, emits the same event, and
-matches an honoured one on gas, HCU depth and global HCU. All of it is asserted
-in `test/Pool.t.ts`.
+that reverts proves the caller's balance is below X and one that succeeds
+proves it is at or above X, so an attacker binary-searches any balance in about
+64 transactions. `SortisPool.release` uses `FHESafeMath.tryDecrease`, which
+returns an encrypted success flag and leaves the balance untouched on failure.
+A refused release transfers zero, moves the weight line by zero, emits the same
+event, and matches an honoured one on gas, HCU depth and global HCU. All of it
+is asserted in `test/Pool.t.ts`.
+
+`tryDecrease` and not `trySub`: both return a flag, but `trySub` returns zero
+on failure, which would wipe a stake the first time someone fat-fingered a
+release.
 
 ### The draw is two transactions, and the order is the argument
 
-`openDraw` commits the register root and the block. At that moment no randomness
-exists anywhere. `drawLot` produces the lot in a **later** block with
-`FHE.randEuint64`, and refuses to run in the opening block. It also refuses if
-the root handle changed in between. Handles are content-derived, so a single
-commit or release anywhere in the pool voids the draw. That turns "the operator
-promised not to reshape the tree" into something the contract checks.
+`openDraw` captures the reference hour, publishes the register's total weight
+at it, and records both root handles and the block. No randomness exists yet.
+`drawLot` produces the lot in a later block with `FHE.randEuint64`, refuses to
+run in the opening block, and refuses if either root handle moved in between.
+Handles are content-derived, so that check is cryptographic rather than a
+promise.
 
-The lot must land uniformly in `[0, totalWeight)`, and every reduction FHEVM
-offers takes a **plaintext** bound: there is no ciphertext-ciphertext remainder,
-and `FHE.randEuint64(bound)` reverts with `NotPowerOfTwo` unless the bound is a
-power of two. So the total weight has to be public. `openDraw` marks the
-committed root publicly decryptable; `drawLot` takes the KMS cleartext plus its
-proof, verifies with `FHE.checkSignatures`, and decodes the total **from the
-bytes it verified**, so an operator who forges the denominator fails verification.
-Fetching that proof is an off-chain read, so the flow stays at two transactions.
+The lot must land uniformly in `[0, total)`, and every reduction FHEVM offers
+takes a plaintext bound: there is no ciphertext-ciphertext remainder, and
+`FHE.randEuint64(bound)` reverts with `NotPowerOfTwo` unless the bound is a
+power of two. So the total is published and verified with `FHE.checkSignatures`
+against the KMS, and decoded from the bytes that were verified.
 
 ### The prize is claimed, not pushed
 
-The brief asks `drawLot` to grant the prize to the drawn leaf's owner with
-`FHE.allow`. That cannot be done there, for a structural reason:
+`FHE.allow` takes a plaintext address and the walk resolves to an encrypted
+index, so granting from `drawLot` would mean decrypting the winner.
+`claimPrize` compares the caller's own leaf against the encrypted result under
+encryption and transfers the prize or an encrypted zero. Every claimant runs
+identical code and moves an identically shaped ciphertext.
 
-```
-FHE.allow(handle, account)  takes a PLAINTEXT address
-the walk resolves to an     ENCRYPTED leaf index
-_leafOwner[index]           needs a plaintext index
-```
+## Sepolia
 
-Decrypting the index to complete the grant would publish the winner, which is
-the one thing the walk exists to prevent. So the grant happens in `claimPrize`,
-at the only moment a plaintext address exists: when someone shows up holding
-one. Each claimant compares their own leaf against the encrypted resolved leaf,
-selects the prize or zero on the encrypted result, and confidentially transfers
-that. Losers transfer an encrypted zero. Gas, HCU depth and global HCU are
-identical across claims, asserted in `test/Draw.t.ts`, so an observer learns who
-tried and nothing else.
+One shard, deployed at register height 6 so capacity enforces the measured
+ceiling: the 65th depositor is rejected rather than silently pushing the draw
+past what it can settle.
 
-### The walk descends only the occupied subtree
+| contract | address |
+| --- | --- |
+| SortisPool | `0xe797Ce8f0F642045d93F329054BDF8895A6A505D` |
+| SortisDraw | `0x4D319809028802278620E06e9FC46414ccAec57A` |
+| SortisWrapQueue | `0x8ef3E4BA6Fd255Afb1e900E24bbDB188E8efBb46` |
+| cUSDT (mock) | `0xa31A85CD14cc1405870a5662d0EFfd11022D8BcE` |
+| USDT (mock) | `0x34Eb4cFEcc10902995C6041037EE2dad94f22dea` |
+| Yield adapter (mock) | `0x225BdbFa3694936DdCef1885BE2451dE92eAE6b4` |
 
-Leaves are allocated from zero upward, so every stake lives in `[0, highWater)`.
-`_walk` starts at the subtree covering that range instead of at the root, which
-makes the draw cost `O(stakes)` rather than `O(capacity)`. A pool deployed at
-the production depth of 16 with five stakes descends a height-3 subtree:
+### Running against Sepolia
 
-```
-drawLot on a DEPTH 16 register holding 5 stakes
-active height  3
-seq depth      1,998,000  (39.96% of 5,000,000)
-global HCU     2,837,192  (14.19% of 20,000,000)
-```
-
-Without it a DEPTH 16 draw needs ~3.6 billion global HCU and reverts. The 2^8
-ceiling from the walk section is a ceiling on **stakes in the register**, not on
-the capacity you deploy with.
-
-## Running it
-
-```bash
-npm install
-npm test
-```
-
-Deploy and run a full commit / wait / release cycle:
+Copy `.env.example` to `.env` and set `PRIVATE_KEY` to a funded account.
 
 ```bash
 npm run deploy:sepolia
 ```
 
-```bash
-npm run cycle:sepolia
-```
-
-Then a full prize round. Open, wait a block, draw, claim:
+One live commit, hold, release and draw in a single process:
 
 ```bash
-npm run draw:sepolia
+npm run live:sepolia
 ```
 
-All three need a funded deployer. Copy `.env.example` to `.env` and set `PRIVATE_KEY`
-or `MNEMONIC`; the default is the public Hardhat test phrase, which never has
-Sepolia ETH.
+**Budget about ninety minutes.** `initializeCLIApi` downloads the 4.6MB PKE CRS
+from S3 in eu-west-1 and does not cache it between processes, which takes about
+twenty minutes on a slow link. Each encrypted input costs roughly forty
+seconds. The hold has to cross an hour boundary for the stake to carry weight.
+That is why the cycle and the draw run in one script rather than two.
+
+## Frontend
+
+One Next.js app in [`web/`](web) serving all three surfaces by Host header. See
+[`web/README.md`](web/README.md).
 
 ## Status
 
-Built: the register, the walk, the TWAB, the pool, the draw, the wrap queue, a
-mock yield adapter, and the HCU suite. 44 tests pass.
-Not yet built: the three frontends.
+Built: all five contracts, the HCU suite, one Sepolia shard, and the landing
+page with the draw column.
 
-The TWAB has a known gap documented at the top of [`SortisTwab.sol`](contracts/SortisTwab.sol):
-weight accrues only when a balance changes, so a stake that is committed and left
-alone carries stale weight. The fix is to keep an intercept and a slope per
-register node, so any subtree's exact weight at time T is one scalar multiply. It
-is described there and deliberately deferred until the draw is being wired up.
+Not built: the Verify screen, the Register screen, the six docs pages, and
+wiring the draw column to live Sepolia instead of its local simulation.

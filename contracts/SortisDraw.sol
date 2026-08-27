@@ -80,9 +80,17 @@ contract SortisDraw is ZamaEthereumConfig {
     // ---------------------------------------------------------------------
 
     struct Draw {
-        /// Root handle committed at open. Content-derived, so it doubles as a
-        /// fingerprint of the entire register at that instant.
+        /// Handle of the weight total published at open. What the KMS proof
+        /// decrypts, and what the lot is reduced modulo.
         bytes32 rootHandle;
+        /// Handles of the two register roots at open. Content-derived, so
+        /// together they fingerprint the whole register at that instant and a
+        /// single commit or release anywhere changes one of them.
+        bytes32 interceptHandle;
+        bytes32 slopeHandle;
+        /// The hour the weights were evaluated at. The walk must use the same
+        /// one, or it resolves against a different tree than was committed.
+        uint64 refHour;
         /// Block the draw was opened in. The lot must come strictly later.
         uint256 openedAtBlock;
         /// Public prize, harvested from the yield adapter at open.
@@ -170,11 +178,20 @@ contract SortisDraw is ZamaEthereumConfig {
             uint64 prize,
             uint64 totalWeight,
             uint8 walkHeight,
-            bool lotDrawn
+            bool lotDrawn,
+            uint64 refHour
         )
     {
         Draw storage d = _draws[drawId];
-        return (d.rootHandle, d.openedAtBlock, d.prize, d.totalWeight, d.walkHeight, d.lotDrawn);
+        return (
+            d.rootHandle,
+            d.openedAtBlock,
+            d.prize,
+            d.totalWeight,
+            d.walkHeight,
+            d.lotDrawn,
+            d.refHour
+        );
     }
 
     /**
@@ -224,7 +241,12 @@ contract SortisDraw is ZamaEthereumConfig {
         // Public prize, in cUSDT, transferred into this contract.
         uint64 prize = yieldAdapter.harvest(address(this));
 
-        euint64 currentRoot = pool.publishRootForDraw();
+        // The hour the whole draw is evaluated at. Captured once here so the
+        // published total and the walk cannot disagree about which instant
+        // they are describing.
+        uint64 refHour = pool.timeUnitsNow();
+
+        euint64 currentRoot = pool.publishRootForDraw(refHour);
         bytes32 handle = euint64.unwrap(currentRoot);
         if (handle == bytes32(0)) revert RegisterEmpty();
 
@@ -232,6 +254,9 @@ contract SortisDraw is ZamaEthereumConfig {
 
         Draw storage d = _draws[drawId];
         d.rootHandle = handle;
+        d.interceptHandle = euint64.unwrap(pool.rootIntercept());
+        d.slopeHandle = euint64.unwrap(pool.rootSlope());
+        d.refHour = refHour;
         d.openedAtBlock = block.number;
         d.prize = prize;
 
@@ -256,11 +281,12 @@ contract SortisDraw is ZamaEthereumConfig {
      *      It is unavoidable: the lot has to land uniformly in [0, totalWeight)
      *      and there is no cheaper reduction that keeps the distribution right.
      *
-     *      GLOBAL HCU is the constraint, not depth. The walk's oblivious read
-     *      costs 2^h - h - 1 selects, so a draw fits in one transaction up to
-     *      about 256 stakes. See the note above `SortisRegister._walk` for why
-     *      that bound is a property of hiding the winner rather than of this
-     *      implementation.
+     *      DEPTH is the constraint. The walk costs about 774,500 per level of
+     *      the active subtree, so a draw fits in one transaction up to 64
+     *      stakes and reverts at 128. See the note above `SortisRegister._walk`
+     *      for why the bound exists at all, which is a property of hiding the
+     *      winner rather than of this implementation, and why it is now depth
+     *      rather than global work that runs out first.
      *
      *      `totalWeight` is not trusted. `FHE.checkSignatures` verifies that
      *      the KMS actually decrypted the committed root handle to that value,
@@ -289,11 +315,19 @@ contract SortisDraw is ZamaEthereumConfig {
         // The lot must be produced in a block the opener could not see.
         if (block.number <= d.openedAtBlock) revert SameBlockAsOpen();
 
-        // The register must be exactly the tree that was committed. Handles are
-        // content-derived, so any commit or release since the open changes this
-        // and voids the draw.
-        bytes32 currentHandle = euint64.unwrap(pool.root());
-        if (currentHandle != d.rootHandle) revert RegisterMovedSinceOpen(d.rootHandle, currentHandle);
+        // The register must be exactly the tree that was committed. Handles
+        // are content-derived, so any commit or release since the open changes
+        // one of the two roots and voids the draw. Both are checked: a change
+        // that moved only the intercept, which is what a release at the same
+        // hour as an equal commit would do, must not slip through.
+        bytes32 currentIntercept = euint64.unwrap(pool.rootIntercept());
+        if (currentIntercept != d.interceptHandle) {
+            revert RegisterMovedSinceOpen(d.interceptHandle, currentIntercept);
+        }
+        bytes32 currentSlope = euint64.unwrap(pool.rootSlope());
+        if (currentSlope != d.slopeHandle) {
+            revert RegisterMovedSinceOpen(d.slopeHandle, currentSlope);
+        }
 
         // Verify the denominator against the KMS rather than trusting it.
         // Reverts on a bad proof, so what follows is a number the KMS signed.
@@ -324,7 +358,7 @@ contract SortisDraw is ZamaEthereumConfig {
 
         // Root to leaf, one encrypted comparison per level, index never
         // decrypted.
-        euint16 resolved = pool.walkForDraw(lot);
+        euint16 resolved = pool.walkForDraw(lot, d.refHour);
         FHE.allowThis(resolved);
 
         // The prize as a ciphertext, so the payout can be made in a shape that
