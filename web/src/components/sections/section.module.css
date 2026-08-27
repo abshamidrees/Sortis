@@ -4,19 +4,74 @@
    Palette and type are Sortis. No shadows: section 6 of the brief says no
    gradients, no glass, no glow, and spend the boldness on the column. */
 
+/* Section rhythm. ONE padding value, applied here and nowhere else, because
+   the previous per-section padding drifted into multi-hundred-pixel gaps that
+   read as broken layout rather than as air. Brief v2 section 6. */
+
 .section {
   border-top: var(--hairline);
+}
+
+/* The inverted section. Used exactly once, on the chart, because that is the
+   argument the submission is judged on and it was carrying the same visual
+   weight as the footer. Once is disciplined; twice is a theme. */
+.section[data-invert="true"] {
+  background: var(--ink);
+  color: var(--stone);
+  border-top-color: transparent;
+}
+
+.section[data-invert="true"] .title,
+.section[data-invert="true"] .panelTitle {
+  color: var(--stone);
+}
+
+.section[data-invert="true"] .standfirst,
+.section[data-invert="true"] .rowLabel,
+.section[data-invert="true"] .provenance,
+.section[data-invert="true"] .chartLegend {
+  color: color-mix(in srgb, var(--stone) 68%, transparent);
+}
+
+.section[data-invert="true"] .panel {
+  background: color-mix(in srgb, var(--stone) 6%, transparent);
+  border-color: color-mix(in srgb, var(--rule) 20%, transparent);
+}
+
+.section[data-invert="true"] .panelHead,
+.section[data-invert="true"] .row,
+.section[data-invert="true"] .provenance {
+  border-color: color-mix(in srgb, var(--rule) 20%, transparent);
+}
+
+.section[data-invert="true"] .rowValue {
+  color: var(--stone);
+}
+
+.section[data-invert="true"] .number,
+.section[data-invert="true"] .rowValue[data-tone="brass"],
+.section[data-invert="true"] .panelVerdict[data-tone="brass"] {
+  color: var(--gleam);
+}
+
+.section[data-invert="true"] :global(.eyebrow) {
+  color: color-mix(in srgb, var(--stone) 60%, transparent);
+}
+
+.section[data-invert="true"] .provenance a,
+.section[data-invert="true"] .provenance code {
+  color: color-mix(in srgb, var(--stone) 80%, transparent);
 }
 
 .inner {
   max-width: 1120px;
   margin: 0 auto;
-  padding: var(--s-9) var(--s-5);
+  padding: 80px var(--s-5);
 }
 
-@media (min-width: 900px) {
+@media (min-width: 768px) {
   .inner {
-    padding: var(--s-10) var(--s-6);
+    padding: 144px var(--s-6);
   }
 }
 

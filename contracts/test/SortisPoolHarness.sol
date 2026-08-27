@@ -36,4 +36,23 @@ contract SortisPoolHarness is SortisPool {
         FHE.allowThis(weight);
         FHE.allow(weight, msg.sender);
     }
+
+    /**
+     * @notice Write weight straight at `leaf`, skipping the transfer.
+     *
+     * @dev WORST-CASE HCU DEPTH: 713,000, the same chain as `commit`.
+     *
+     *      Exists so a test can push `leafHighWater` to an arbitrary point in
+     *      one transaction and measure `drawLot` at a given `activeHeight`
+     *      without funding one signer per leaf. Reaching height 6 the honest
+     *      way needs 33 committing addresses, which measures the test harness
+     *      rather than the contract.
+     */
+    function seedAt(uint256 leaf, uint64 amount) external {
+        (euint64 signed, euint64 interceptDelta) = _signedDeltas(
+            FHE.asEuint64(amount),
+            FHE.asEbool(true)
+        );
+        _updateWith(leaf, signed, interceptDelta);
+    }
 }

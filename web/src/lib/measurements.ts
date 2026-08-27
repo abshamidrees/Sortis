@@ -10,7 +10,10 @@
 export const REPO_URL = "https://github.com/abshamidrees/Sortis";
 
 /** The commit whose `npm test` run produced the figures below. */
-export const MEASUREMENT_COMMIT = "b741488";
+export const MEASUREMENT_COMMIT = "c234b6a";
+
+/** The Sepolia draw that confirmed the mock's accounting. Height 2. */
+export const SEPOLIA_CHECK = { height: 2, depth: 2_199_000, mockDepth: 2_199_000 } as const;
 
 export const HCU = {
   /** FHEVM caps the longest dependent chain in one transaction. */
@@ -33,26 +36,33 @@ export const HCU = {
    */
   UPDATE_DEPTH: 713_000,
 
-  /** Depth the walk adds per tree level, measured across the sweep. */
+  /** Depth the walk alone adds per tree level. See DRAW for what a draw costs. */
   WALK_PER_LEVEL: 774_500,
 
   /**
-   * The walk, measured by sweeping until the transaction reverts. Depth is
-   * the binding budget, so this ceiling cannot be raised by splitting the
-   * draw across transactions.
+   * A COMPLETE DRAW, swept until it reverts. This is the table that sets the
+   * shard size.
+   *
+   * The walk alone fits up to 64 stakes, and reading only that number is how
+   * a shard briefly got deployed at a size that could not settle its own
+   * draw. `drawLot` reduces the lot modulo the published total before it
+   * descends, and `FHE.rem` is a 1,153,000 chain the whole walk then hangs
+   * off. Depth is the binding budget and it cannot be checkpointed, so this
+   * ceiling is hard.
    */
-  WALK: [
-    { stakes: 4, depth: 1_549_000, global: 2_093_192, fits: true },
-    { stakes: 8, depth: 2_370_000, global: 3_461_416, fits: true },
-    { stakes: 16, depth: 3_098_000, global: 5_269_896, fits: true },
-    { stakes: 32, depth: 3_826_000, global: 7_958_888, fits: true },
-    { stakes: 64, depth: 4_647_000, global: 12_408_904, fits: true },
-    { stakes: 128, depth: 5_421_500, global: 20_373_000, fits: false },
-    { stakes: 256, depth: 6_196_000, global: 35_381_000, fits: false },
+  DRAW: [
+    { stakes: 4, depth: 2_199_000, fits: true },
+    { stakes: 8, depth: 3_020_000, fits: true },
+    { stakes: 16, depth: 3_748_000, fits: true },
+    { stakes: 32, depth: 4_476_000, fits: true },
+    { stakes: 64, depth: 5_297_000, fits: false },
   ] as const,
 
-  /** The largest register one transaction can draw from. Measured. */
-  SHARD_CEILING: 64,
+  /** The largest shard a draw can actually settle. Measured, not projected. */
+  SHARD_CEILING: 32,
+
+  /** Depth the draw adds per level of the active subtree. */
+  DRAW_PER_LEVEL: 728_000,
 
   /** Measured on a pool over a 2^8 register. */
   COMMIT_DEPTH: 920_000,
@@ -76,3 +86,6 @@ export const ADDRESSES = {
 } as const;
 
 export const ETHERSCAN = "https://sepolia.etherscan.io/address/";
+
+/** Public Sepolia RPC, used by the Verify screen so it needs no wallet. */
+export const RPC_FALLBACK = "https://ethereum-sepolia-rpc.publicnode.com";

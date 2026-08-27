@@ -1,22 +1,24 @@
+/* Hero. Brief v2 section 3.
+
+   The nav is fixed at 64px, so the hero claims the rest of the first screen
+   and centres its content in it. The previous version let the 64-slot plate
+   set the height, which pushed the copy to the bottom of a screen of dead
+   space and ran the plate off the fold. The plate is bounded here instead. */
+
 .main {
   min-height: 100vh;
-  padding: var(--s-8) var(--s-5);
 }
 
-/* Hero. The only section without a top rule, because there is nothing above
-   it to separate it from. */
 .heroSection {
-  padding: var(--s-8) var(--s-5) var(--s-9);
+  min-height: calc(100vh - 64px);
+  display: flex;
+  align-items: center;
+  padding: var(--s-7) var(--s-5);
 }
 
 @media (min-width: 900px) {
   .heroSection {
-    padding: var(--s-9) var(--s-6) var(--s-10);
-    /* Give the hero the room to be a hero. Below this the page reads as a
-       document that happens to start with a headline. */
-    min-height: 84vh;
-    display: flex;
-    align-items: center;
+    padding: var(--s-7) var(--s-6);
   }
 }
 
@@ -26,49 +28,64 @@
   margin: 0 auto;
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--s-8);
+  gap: var(--s-7);
   align-items: center;
 }
 
 @media (min-width: 900px) {
   .hero {
-    grid-template-columns: 1.2fr 0.8fr;
-    gap: var(--s-8);
-    padding-top: var(--s-9);
+    /* Twelve columns: copy in 1 through 6, plate in 7 through 12. */
+    grid-template-columns: repeat(12, 1fr);
+    column-gap: 64px;
+  }
+  .copy {
+    grid-column: 1 / span 6;
+  }
+  .column {
+    grid-column: 7 / span 6;
   }
 }
 
-/* Sized to hold "Save. Never lose." on one line in this column. Larger and
-   it breaks after "Never", which splits the phrase in the wrong place. */
 .headline {
-  font-size: clamp(2.25rem, 5vw, 4rem);
+  font-size: clamp(44px, 5.2vw, 76px);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
   margin: var(--s-4) 0 var(--s-5);
 }
 
 .subhead {
   max-width: 46ch;
   color: var(--graphite);
-  font-size: 1.0625rem;
+  font-size: 18px;
   margin: 0 0 var(--s-6);
 }
 
 .actions {
   display: flex;
   align-items: center;
-  gap: var(--s-5);
+  gap: var(--s-4);
   flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .primary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   background: var(--brass);
-  color: var(--chalk);
+  color: var(--stone);
   text-decoration: none;
-  font-weight: 500;
-  font-size: 0.9375rem;
+  font-weight: 600;
+  font-size: 15px;
   padding: var(--s-3) var(--s-5);
   border-radius: var(--r-card);
+  transition: background 120ms var(--ease-step);
 }
 
 .primary:hover {
@@ -77,28 +94,68 @@
 }
 
 .ghost {
-  color: var(--graphite);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
   text-decoration: none;
-  font-size: 0.9375rem;
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: 2px;
+  font-size: 15px;
+  padding: var(--s-3) var(--s-5);
+  border: var(--hairline);
+  border-radius: var(--r-card);
+  transition: border-color 120ms var(--ease-step);
 }
 
 .ghost:hover {
-  color: var(--ink);
-  border-bottom-color: var(--graphite);
+  border-color: var(--graphite);
 }
+
+/* The numbers, stated plainly under the buttons. A claim a judge can check
+   against the chart two sections down. */
+.heroStat {
+  margin: var(--s-5) 0 0;
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--graphite);
+}
+
+/* ------------------------------------------------------------------ plate */
 
 .column {
   display: flex;
   flex-direction: column;
-  gap: var(--s-4);
-  align-items: flex-start;
+  gap: var(--s-3);
+  align-items: stretch;
+  min-width: 0;
+}
+
+/* A header strip, so the plate reads as an instrument with a top rather than
+   as a list that happens to start there. */
+.plateHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-bottom: var(--s-2);
+  border-bottom: var(--hairline);
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--graphite);
+}
+
+/* The plate is bounded and fades out at the bottom edge, so it terminates
+   deliberately instead of being cut off by the fold. */
+.plateBound {
+  max-height: 72vh;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 96px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 96px), transparent 100%);
 }
 
 .caption {
-  max-width: 42ch;
   margin: 0;
+  font-family: var(--font-data);
+  font-size: 11px;
   color: var(--graphite);
-  font-size: 0.8125rem;
 }
+

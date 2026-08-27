@@ -1,3 +1,6 @@
+import Link from "next/link";
+
+import { Nav } from "@/components/chrome/Nav";
 import { DrawColumn } from "@/components/DrawColumn";
 import { Reveal } from "@/components/Reveal";
 import { Wall } from "@/components/sections/Wall";
@@ -5,7 +8,12 @@ import { HowADraw } from "@/components/sections/HowADraw";
 import { PrivacyTable } from "@/components/sections/PrivacyTable";
 import { WrapLeak } from "@/components/sections/WrapLeak";
 import { Footer } from "@/components/sections/Footer";
+import { HCU } from "@/lib/measurements";
 import styles from "./landing.module.css";
+
+/** One shard, and the tree height that holds it. */
+const LEVELS = 5;
+const SHARD = 2 ** LEVELS;
 
 /**
  * sortis.xyz
@@ -16,15 +24,14 @@ import styles from "./landing.module.css";
 export default function Landing() {
   return (
     <>
+      <Nav surface="marketing" />
       <main>
         <section className={styles.heroSection}>
           <div className={styles.hero}>
             <div className={styles.copy}>
               <p className="eyebrow">Confidential prize-linked savings</p>
               <h1 className={styles.headline}>
-                Save. Never lose.
-                <br />
-                Nobody sees.
+                Save. Never lose. Nobody sees.
               </h1>
               <p className={styles.subhead}>
                 Your deposit earns a share of the pooled yield as a prize. Your balance, your odds
@@ -32,20 +39,31 @@ export default function Landing() {
                 verifiable.
               </p>
               <div className={styles.actions}>
-                <a className={styles.primary} href="https://app.sortis.xyz">
+                <Link className={styles.primary} href="/app">
                   Open the app
-                </a>
+                </Link>
                 <a className={styles.ghost} href="#the-wall">
                   Read the architecture
                 </a>
               </div>
+              <p className={styles.heroStat}>
+                {SHARD} stakes per shard. {LEVELS} levels.{" "}
+                {HCU.DRAW[3].depth.toLocaleString("en-US")} HCU.
+              </p>
             </div>
 
             <div className={styles.column}>
-              <DrawColumn levels={6} loop autoPlay />
+              <div className={styles.plateHead}>
+                <span>REGISTER, SHARD 001</span>
+                <span>
+                  {SHARD} / {SHARD}
+                </span>
+              </div>
+              <div className={styles.plateBound}>
+                <DrawColumn levels={LEVELS} loop autoPlay />
+              </div>
               <p className={styles.caption}>
-                One shard, 64 stakes, six encrypted comparisons. A linear scan over the same
-                register reverts at thirty. Scale is more shards, not a bigger tree.
+                The lot descends {LEVELS} levels. Every slot stays encrypted.
               </p>
             </div>
           </div>

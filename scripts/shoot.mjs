@@ -25,6 +25,7 @@ const SHOTS = [
   { name: "landing-desktop", path: "/", width: 1440, height: 900, full: true },
   { name: "landing-mobile", path: "/", width: 390, height: 844, full: true },
   { name: "app-draw", path: "/app/draw", width: 1440, height: 900, full: false },
+  { name: "app-verify", path: "/app/verify", width: 1440, height: 900, full: false },
   { name: "docs", path: "/docs", width: 1440, height: 900, full: false },
 ];
 
@@ -41,7 +42,27 @@ async function main() {
         reducedMotion: reduced ? "reduce" : "no-preference",
       });
       const page = await context.newPage();
-      await page.goto(`${BASE}${shot.path}`, { waitUntil: "networkidle" });
+
+      // Console errors are a submission defect in their own right, so they are
+      // collected here rather than left for someone to find in devtools.
+      const consoleErrors = [];
+      page.on("console", (msg) => {
+        if (msg.type() === "error") consoleErrors.push(msg.text().slice(0, 160));
+      });
+      // The message alone is "Failed to load resource", which names nothing.
+      // The request URL is the part that says what to fix.
+      page.on("requestfailed", (req) =>
+        consoleErrors.push(`requestfailed: ${req.url().slice(0, 120)}`),
+      );
+      page.on("response", (res) => {
+        if (res.status() >= 400) consoleErrors.push(`http ${res.status()}: ${res.url().slice(0, 120)}`);
+      });
+      page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message.slice(0, 160)}`));
+
+      // "load" rather than "networkidle". A third-party font or an analytics
+      // beacon that never settles would otherwise hang the whole run, and the
+      // page is painted long before the network goes quiet.
+      await page.goto(`${BASE}${shot.path}`, { waitUntil: "load", timeout: 45_000 });
 
       // Scroll the whole page before capturing. Sections reveal on
       // intersection, and a full-page screenshot stitches without scrolling,
@@ -65,6 +86,9 @@ async function main() {
       const file = join(OUT, `${shot.name}${reduced ? "-reduced" : ""}.png`);
       await page.screenshot({ path: file, fullPage: shot.full });
       console.log(`  ${file}`);
+      if (consoleErrors.length) {
+        for (const e of [...new Set(consoleErrors)]) console.log(`      console: ${e}`);
+      }
       await context.close();
     }
   }

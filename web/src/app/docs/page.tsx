@@ -1,3 +1,4 @@
+import { Nav } from "@/components/chrome/Nav";
 import styles from "../landing.module.css";
 
 /**
@@ -9,7 +10,9 @@ import styles from "../landing.module.css";
  */
 export default function Docs() {
   return (
-    <main className={styles.main}>
+    <>
+      <Nav surface="marketing" />
+      <main className={styles.main}>
       <div className={styles.hero}>
         <div className={styles.copy}>
           <p className="eyebrow">Documentation</p>
@@ -23,6 +26,7 @@ export default function Docs() {
           </p>
         </div>
       </div>
-    </main>
+      </main>
+    </>
   );
 }

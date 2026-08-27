@@ -85,13 +85,17 @@ export function DrawColumn({
 
   /**
    * A real kleroterion had several columns of slots cut into one slab, and a
-   * shard needs them for the same reason the Athenians did: sixty-four rows in
-   * a single column is taller than a screen. Slots fill column-major, so the
-   * index order runs down the first column and continues down the second, and
-   * the surviving range stays contiguous on screen. The first halving keeps
-   * exactly one column, which is the clearest frame of the whole animation.
+   * shard needs them for the same reason the Athenians did. Slots fill
+   * column-major, so the index order runs down the first column and continues
+   * down the second, and the surviving range stays contiguous on screen. The
+   * first halving keeps exactly one column, which is the clearest frame of the
+   * whole animation.
+   *
+   * The threshold is 16 rather than 32 because a single tall column stretches
+   * each row across the full width of the plate, and a drawn slot then reads
+   * as a banner rather than as a slot.
    */
-  const columns = slotCount > 32 ? 2 : 1;
+  const columns = slotCount > 16 ? 2 : 1;
   const rows = Math.ceil(slotCount / columns);
   const pitch = rows > 24 ? 17 : rows > 16 ? 20 : 26;
   const compact = pitch < 24;

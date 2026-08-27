@@ -11,11 +11,11 @@ for the full design.
 
 Every other entry will encrypt balances and scan them, which reverts at 30
 depositors because of the FHEVM sequential depth budget. Sortis descends an
-encrypted tree instead. That draws from 64 stakes in a single transaction, and
-scales by adding shards rather than by growing the tree. The 64 is not a
+encrypted tree instead. That draws from 32 stakes in a single transaction, and
+scales by adding shards rather than by growing the tree. The 32 is not a
 target, it is measured: hiding the winner forces the search to touch every leaf
 it could have picked, so the cost is linear in stakes however the tree is
-arranged, and depth runs out at 128.
+arranged, and a draw runs out of depth at 64.
 
 ## The budgets
 
@@ -51,22 +51,43 @@ other and bill against the global budget instead.
 
 ### The draw: where the ceiling is, and why
 
-| stakes | seq depth | of budget | global HCU | of budget | result |
-| --- | --- | --- | --- | --- | --- |
-| 16 | 3,098,000 | 61.96% | 5,269,896 | 26.35% | fits |
-| 32 | 3,826,000 | 76.52% | 7,958,888 | 39.79% | fits |
-| 64 | 4,647,000 | 92.94% | 12,408,904 | 62.04% | fits, and this is the shard |
-| 128 | reverts | | | | depth budget |
+A draw is more than a walk. `drawLot` reduces the lot modulo the published
+total before it descends, and `FHE.rem` is a 1,153,000 chain that the whole
+walk then hangs off. Measuring `_walk` alone says 64 stakes fit. Measuring the
+transaction that actually has to land says otherwise.
+
+| stakes | drawLot depth | of budget | result |
+| --- | --- | --- | --- |
+| 4 | 2,199,000 | 43.98% | fits |
+| 8 | 3,020,000 | 60.40% | fits |
+| 16 | 3,748,000 | 74.96% | fits |
+| 32 | 4,476,000 | 89.52% | fits, and this is the shard |
+| 64 | reverts | | depth budget |
+
+A shard was briefly deployed at 64 on the strength of the walk figure and could
+not have settled its own draw. The number that sets capacity has to be the cost
+of the whole transaction.
+
+**Verified against the chain, not just the mock.** A real draw on Sepolia at
+active height 2 reported 2,199,000 HCU of depth. The mock reports 2,199,000 for
+the same call. They agree exactly, which is what makes the table above
+trustworthy. `test/Calibration.t.ts` pins that comparison so it cannot drift.
 
 **Depth binds, not global work.** That distinction decides what can be done
 about it: too much work splits across checkpointed transactions, a chain that
-is too long does not. So 64 is a hard ceiling, and the protocol shards rather
+is too long does not. So this is a hard ceiling, and the protocol shards rather
 than pretending otherwise.
 
-The cost per level is about 774,500 HCU, and 527,000 of that is turning a
-node's intercept and slope into a weight. That is the price of a weight line
-that never goes stale, and it is why this ceiling is lower than an earlier
-single-tree version's.
+The cost is about 728,000 HCU per level of the descent, and most of it is
+turning a node's intercept and slope into a weight on the critical path. That
+is the price of a weight line that never goes stale.
+
+**The named path to raising it**, if there is ever slack: materialise the
+weights once at `openDraw` instead of evaluating intercept and slope at every
+level. Each node's evaluation is independent, so a snapshot pass bills against
+the 20,000,000 global budget rather than the 5,000,000 depth one. That does not
+make a shard much larger, but it converts a hard ceiling into a soft one,
+because global work is checkpointable and depth is not.
 
 ## Weight is a line, not a stale point
 
@@ -147,18 +168,18 @@ identical code and moves an identically shaped ciphertext.
 
 ## Sepolia
 
-One shard, deployed at register height 6 so capacity enforces the measured
-ceiling: the 65th depositor is rejected rather than silently pushing the draw
+One shard, deployed at register height 5 so capacity enforces the measured
+ceiling: the 33rd depositor is rejected rather than silently pushing the draw
 past what it can settle.
 
 | contract | address |
 | --- | --- |
-| SortisPool | `0xe797Ce8f0F642045d93F329054BDF8895A6A505D` |
-| SortisDraw | `0x4D319809028802278620E06e9FC46414ccAec57A` |
-| SortisWrapQueue | `0x8ef3E4BA6Fd255Afb1e900E24bbDB188E8efBb46` |
-| cUSDT (mock) | `0xa31A85CD14cc1405870a5662d0EFfd11022D8BcE` |
-| USDT (mock) | `0x34Eb4cFEcc10902995C6041037EE2dad94f22dea` |
-| Yield adapter (mock) | `0x225BdbFa3694936DdCef1885BE2451dE92eAE6b4` |
+| SortisPool | `0xa57F6D5FC7780cbE5324EeC26d5a6BA88D22AeBa` |
+| SortisDraw | `0xBB39Fd2c061A138940dfC3aC182B5847d163EC57` |
+| SortisWrapQueue | `0xF492f9b8e9dC86F6d6CDad46BaF66A332029c3Cc` |
+| cUSDT (mock) | `0x0ADfC89408f91aA3da2bac550Da87E1c6d08e989` |
+| USDT (mock) | `0x6fa6daC32f9065Ab1caE413ae9726fD55E0F420A` |
+| Yield adapter (mock) | `0xBeb04ad88B411661D15742dbE1a659a6CEbB96Ae` |
 
 ### Running against Sepolia
 

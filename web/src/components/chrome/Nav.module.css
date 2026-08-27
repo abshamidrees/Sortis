@@ -1,0 +1,217 @@
+/* Top nav, both surfaces. Fixed, 64px, blurred stone.
+   Brief v2 section 2. */
+
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  z-index: 50;
+  background: color-mix(in srgb, var(--stone) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  /* The hairline appears only once the page has scrolled, so the nav sits on
+     an unbroken ground at the top and separates itself once there is
+     something to separate from. Nothing else changes: no shrinking, no
+     colour shift. */
+  border-bottom: 1px solid transparent;
+  transition: border-color 120ms var(--ease-step);
+}
+
+.nav[data-scrolled="true"] {
+  border-bottom-color: var(--rule);
+}
+
+.inner {
+  height: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 var(--s-5);
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+}
+
+@media (min-width: 900px) {
+  .inner {
+    padding: 0 var(--s-6);
+  }
+}
+
+/* ------------------------------------------------------------------- left */
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  text-decoration: none;
+  flex: none;
+}
+
+.mark {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: var(--rule);
+  flex: none;
+}
+
+.shard {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--graphite);
+  flex: none;
+}
+
+/* ----------------------------------------------------------------- centre */
+
+.links {
+  display: none;
+  align-items: center;
+  gap: var(--s-5);
+  margin: 0 auto;
+}
+
+@media (min-width: 768px) {
+  .links {
+    display: flex;
+  }
+}
+
+.link {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--graphite);
+  text-decoration: none;
+  transition: color 120ms var(--ease-step);
+  padding: var(--s-2) 0;
+}
+
+.link:hover {
+  color: var(--ink);
+}
+
+/* App tabs carry an active state. Marketing links never do. */
+.link[data-active="true"] {
+  color: var(--ink);
+  border-bottom: 2px solid var(--brass);
+}
+
+/* ------------------------------------------------------------------ right */
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-left: auto;
+  flex: none;
+}
+
+.repo {
+  display: none;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--graphite);
+  text-decoration: none;
+  transition: color 120ms var(--ease-step);
+}
+
+.repo:hover {
+  color: var(--ink);
+}
+
+@media (min-width: 900px) {
+  .repo {
+    display: inline;
+  }
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  background: var(--brass);
+  color: var(--stone);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: var(--r-card);
+  transition: background 120ms var(--ease-step);
+  white-space: nowrap;
+}
+
+.cta:hover {
+  background: var(--gleam);
+  color: var(--ink);
+}
+
+/* ----------------------------------------------------------------- mobile */
+
+.burger {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .burger {
+    display: none;
+  }
+}
+
+.burgerLine {
+  display: block;
+  height: 1.5px;
+  background: var(--ink);
+  border-radius: 1px;
+}
+
+.sheet {
+  position: fixed;
+  top: 64px;
+  left: 0;
+  right: 0;
+  background: var(--stone);
+  border-bottom: var(--hairline);
+  padding: var(--s-4) var(--s-5) var(--s-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  z-index: 49;
+}
+
+.sheet a {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 16px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+/* The nav is fixed, so every page needs the height back. */
+.spacer {
+  height: 64px;
+}

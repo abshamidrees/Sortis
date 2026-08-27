@@ -28,13 +28,21 @@ const config: NextConfig = {
   async headers() {
     return [
       {
-        // The relayer SDK instantiates WASM, which needs these two headers to
-        // use SharedArrayBuffer. Without them encryption silently falls back to
-        // a slower path or fails outright.
+        // The relayer SDK instantiates WASM and wants cross-origin isolation.
+        //
+        // COOP is same-origin-allow-popups, not same-origin. Wallet SDKs open
+        // a popup and then talk to it through window.opener, and same-origin
+        // severs that handle, which is the console error that shipped on every
+        // page load. The allow-popups variant keeps the isolation the WASM
+        // wants and leaves the opener intact.
+        //
+        // COEP is credentialless rather than require-corp, because
+        // require-corp blocks any cross-origin subresource that does not opt
+        // in, and the Google Fonts stylesheet does not.
         source: "/:path*",
         headers: [
-          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-          { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+          { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
         ],
       },
     ];

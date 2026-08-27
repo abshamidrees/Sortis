@@ -7,19 +7,27 @@ const { ethers } = hre;
 /**
  * Deploys one shard: the confidential asset, the pool, the draw, the wrap
  * queue and the yield adapter, then records the addresses in
- * deployments/<network>.json so the cycle and draw scripts can find them.
+ * deployments/<network>.json so the live scripts can find them.
  *
- * SHARD SIZE. A register of height 6 holds 64 stakes, which is the largest a
- * single-transaction winner-hiding draw can resolve. test/HCU.t.ts measures
- * that ceiling by sweeping until the walk reverts, and it is set by the
- * 5,000,000 sequential depth budget rather than by the global one, so it
- * cannot be raised by splitting the draw across transactions.
+ * SHARD SIZE IS 32, SET BY WHAT A DRAW COSTS, NOT BY WHAT A WALK COSTS.
  *
- * The capacity is the enforcement. Deploying at height 6 means the 65th
+ * test/HCU.t.ts sweeps `_walk` and finds it fits up to 64 stakes. A draw is
+ * more than the walk: `drawLot` reduces the lot modulo the published total
+ * first, and `FHE.rem` is a 1,153,000 chain that the whole descent then hangs
+ * off. test/Calibration.t.ts sweeps the real `drawLot` and it reverts at 64:
+ *
+ *     stakes    drawLot depth    of the 5,000,000 budget
+ *         16        3,748,000                     74.96%
+ *         32        4,476,000                     89.52%
+ *         64          reverts                          -
+ *
+ * A shard was briefly deployed at height 6 on the strength of the walk figure
+ * and could not have settled its own draw. Capacity is the enforcement, so
+ * this has to be the number a draw can actually finish: at height 5 the 33rd
  * depositor is rejected by `RegisterFull` rather than silently pushing the
  * draw past what it can settle. Scale is more shards, not a bigger tree.
  */
-const DEPTH = 6;
+const DEPTH = 5;
 
 /** Epoch length for the wrap queue. 4 hours on Sepolia so a demo can show one
  *  turn over; mainnet would run longer, which only helps the anonymity set. */
@@ -53,7 +61,7 @@ async function main() {
   const usdtAddress = await usdt.getAddress();
   console.log(`  cUSDT     ${usdtAddress}`);
 
-  console.log(`deploying SortisPool at depth ${DEPTH} (2^${DEPTH} stakes)...`);
+  console.log(`deploying SortisPool at depth ${DEPTH} (${2 ** DEPTH} stakes per shard)...`);
   const poolFactory = await ethers.getContractFactory("SortisPool");
   const pool = await poolFactory.deploy(usdtAddress, DEPTH);
   await pool.waitForDeployment();

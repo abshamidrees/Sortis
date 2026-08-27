@@ -1,3 +1,4 @@
+import { Nav } from "@/components/chrome/Nav";
 import { DrawColumn } from "@/components/DrawColumn";
 import { ConnectBar } from "@/components/ConnectBar";
 import styles from "@/app/landing.module.css";
@@ -12,7 +13,9 @@ import styles from "@/app/landing.module.css";
  */
 export function DrawScreen() {
   return (
-    <main className={styles.main}>
+    <>
+      <Nav surface="app" />
+      <main className={styles.main}>
       <div className={styles.hero} style={{ alignItems: "start" }}>
         <div className={styles.copy}>
           <ConnectBar />
@@ -30,12 +33,13 @@ export function DrawScreen() {
         </div>
 
         <div className={styles.column}>
-          <DrawColumn levels={6} showReplay autoPlay />
+          <DrawColumn levels={5} showReplay autoPlay />
           <p className={styles.caption}>
             Not yet wired to Sepolia. The column runs a local simulation of the walk.
           </p>
         </div>
       </div>
-    </main>
+      </main>
+    </>
   );
 }

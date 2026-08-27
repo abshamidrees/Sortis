@@ -1,23 +1,52 @@
 import styles from "./section.module.css";
-import { HCU, LINEAR_SCAN_WALL, MEASUREMENT_COMMIT, REPO_URL } from "@/lib/measurements";
+import {
+  HCU,
+  LINEAR_SCAN_WALL,
+  MEASUREMENT_COMMIT,
+  REPO_URL,
+  SEPOLIA_CHECK,
+} from "@/lib/measurements";
 
 /**
- * Section 2 of the landing page. The wall.
+ * Section 2. The wall.
  *
- * Everything here is measured by test/HCU.t.ts, and the commit that produced
- * the numbers is printed under the chart so a reader can rerun it.
+ * This section runs on an inverted ground, and it is the only one that does.
+ * The brief said spend the boldness in one place and the draw column took it,
+ * which left the argument that actually wins the bounty carrying the same
+ * visual weight as the footer. Inverting exactly one section fixes both the
+ * emphasis and the monotony, and stays disciplined because it happens once.
  *
- * The chart plots SEQUENTIAL DEPTH, because that is the budget that stops both
- * designs. A linear scan is one dependent chain and crosses the limit at 30
- * depositors. The walk is a shorter chain per level and crosses at 128. Sortis
- * ships shards of 64, which is the last power of two underneath.
+ * The chart plots SEQUENTIAL DEPTH of a COMPLETE DRAW, because that is the
+ * budget that stops both designs and because a fragment of a transaction is
+ * not a fair comparison. A linear scan is one dependent chain and crosses at
+ * 30. A Sortis draw is a short chain per level plus the lot reduction, and
+ * crosses at 64. Shards ship at 32, the last power of two underneath.
+ *
+ * TWO ANNOTATIONS, NO MORE. The previous version had four overlapping in the
+ * same region and was unreadable. The limit label sits at the left end where
+ * neither curve is; the shard marker's label sits below the axis; and each
+ * curve is labelled at its own endpoint in its own colour. The measured points
+ * are drawn but not labelled, because the table underneath already carries
+ * those numbers and repeating them is what made this a mess.
  */
 
 const W = 680;
-const H = 380;
-const PLOT = { left: 64, right: 650, top: 24, bottom: 316 };
+const H = 400;
+
+// 76px of left gutter is reserved for the rotated axis label. Without it the
+// label clipped to "TIAL HCU", which reads as a rendering fault on the most
+// important visual on the site.
+const PLOT = { left: 76, right: 640, top: 30, bottom: 300 };
+
 const MAX_LOG2 = 8; // x axis runs 1 to 256 stakes
 const MAX_HCU = 6_000_000;
+
+// The ground is --ink here, so the chart's furniture is stone at reduced
+// opacity rather than graphite, and the Sortis curve is --gleam rather than
+// --brass so it survives the dark background.
+const LABEL = "color-mix(in srgb, var(--stone) 62%, transparent)";
+const GRID = "color-mix(in srgb, var(--stone) 14%, transparent)";
+const AXIS = "color-mix(in srgb, var(--stone) 40%, transparent)";
 
 const xFor = (stakes: number) =>
   PLOT.left + (Math.log2(stakes) / MAX_LOG2) * (PLOT.right - PLOT.left);
@@ -29,10 +58,17 @@ const yFor = (hcu: number) =>
 const linearDepth = (stakes: number) => stakes * HCU.ADD_CT_CT;
 
 /**
- * The walk. Measured at 774,500 per level, and levels are log2 of the stakes,
- * so it is a straight line against a log x axis.
+ * A complete Sortis draw. Levels are log2 of the stakes, so it is a straight
+ * line against a log x axis, offset by the cost of reducing the lot modulo the
+ * published total before the descent starts.
+ *
+ * This plots `drawLot`, not `_walk`. The walk alone is cheaper and reading
+ * that number instead is how a shard nearly shipped at a size that could not
+ * settle its own draw.
  */
-const walkDepth = (stakes: number) => HCU.WALK_PER_LEVEL * Math.log2(Math.max(stakes, 1));
+const DRAW_INTERCEPT = HCU.DRAW[0].depth - HCU.DRAW_PER_LEVEL * 2;
+const drawDepth = (stakes: number) =>
+  DRAW_INTERCEPT + HCU.DRAW_PER_LEVEL * Math.log2(Math.max(stakes, 1));
 
 function pathFor(fn: (n: number) => number) {
   const points: string[] = [];
@@ -46,15 +82,18 @@ function pathFor(fn: (n: number) => number) {
 }
 
 const Y_GRID = [1, 2, 3, 4, 5, 6].map((m) => m * 1_000_000);
-const X_TICKS = [1, 4, 16, 64, 256];
+const X_TICKS = [1, 4, 16, 32, 64, 256];
+
+/** Where the linear curve leaves the top of the plot, for its endpoint label. */
+const LINEAR_EXIT = MAX_HCU / HCU.ADD_CT_CT;
 
 export function Wall() {
-  const fits = HCU.WALK.filter((row) => row.fits);
+  const fits = HCU.DRAW.filter((row) => row.fits);
   const ceiling = fits[fits.length - 1];
-  const firstFail = HCU.WALK.find((row) => !row.fits)!;
+  const firstFail = HCU.DRAW.find((row) => !row.fits)!;
 
   return (
-    <section className={styles.section} id="the-wall">
+    <section className={styles.section} id="the-wall" data-invert="true">
       <div className={styles.inner}>
         <div className={styles.head}>
           <span className={styles.number}>02</span>
@@ -64,7 +103,8 @@ export function Wall() {
             FHEVM caps the longest chain of dependent operations in a transaction at 5,000,000 HCU.
             Encrypting balances and scanning them puts every depositor in that one chain, so it
             stops working almost immediately. Sortis descends a tree instead, which puts one short
-            chain per level in the budget rather than one per person.
+            chain per level in the budget rather than one per person. Both curves are a complete
+            draw, not a fragment of one.
           </p>
         </div>
 
@@ -73,8 +113,19 @@ export function Wall() {
             className={styles.chart}
             viewBox={`0 0 ${W} ${H}`}
             role="img"
-            aria-label={`Sequential HCU against stake count. A linear scan crosses the 5,000,000 limit at ${LINEAR_SCAN_WALL} depositors. The Sortis walk crosses at ${firstFail.stakes}, and shards are capped at ${ceiling.stakes} stakes, the last power of two underneath.`}
+            aria-label={`Sequential HCU against stake count. A linear scan crosses the 5,000,000 limit at ${LINEAR_SCAN_WALL} depositors. The Sortis walk crosses at ${firstFail.stakes} stakes, and a shard is capped at ${ceiling.stakes}, the last power of two underneath.`}
           >
+            <text
+              transform={`translate(20 ${(PLOT.top + PLOT.bottom) / 2}) rotate(-90)`}
+              textAnchor="middle"
+              fill={LABEL}
+              fontFamily="var(--font-body)"
+              fontSize="10"
+              letterSpacing="0.08em"
+            >
+              SEQUENTIAL HCU
+            </text>
+
             {Y_GRID.map((value) => (
               <g key={value}>
                 <line
@@ -82,14 +133,14 @@ export function Wall() {
                   x2={PLOT.right}
                   y1={yFor(value)}
                   y2={yFor(value)}
-                  stroke="var(--rule)"
+                  stroke={GRID}
                   strokeWidth="1"
                 />
                 <text
                   x={PLOT.left - 10}
                   y={yFor(value) + 4}
                   textAnchor="end"
-                  fill="var(--graphite)"
+                  fill={LABEL}
                   fontFamily="var(--font-data)"
                   fontSize="10"
                 >
@@ -104,7 +155,7 @@ export function Wall() {
                 x={xFor(n)}
                 y={PLOT.bottom + 20}
                 textAnchor={n === 1 ? "start" : n === 256 ? "end" : "middle"}
-                fill="var(--graphite)"
+                fill={n === ceiling.stakes ? "var(--gleam)" : LABEL}
                 fontFamily="var(--font-data)"
                 fontSize="10"
               >
@@ -112,28 +163,19 @@ export function Wall() {
               </text>
             ))}
             <text
-              x={PLOT.left}
-              y={PLOT.bottom + 38}
-              fill="var(--graphite)"
+              x={(PLOT.left + PLOT.right) / 2}
+              y={PLOT.bottom + 58}
+              textAnchor="middle"
+              fill={LABEL}
               fontFamily="var(--font-body)"
               fontSize="10"
               letterSpacing="0.08em"
             >
               STAKES IN THE REGISTER
             </text>
-            <text
-              x={PLOT.left - 10}
-              y={PLOT.top - 8}
-              textAnchor="end"
-              fill="var(--graphite)"
-              fontFamily="var(--font-body)"
-              fontSize="10"
-              letterSpacing="0.08em"
-            >
-              SEQUENTIAL HCU
-            </text>
 
-            {/* the limit */}
+            {/* Annotation one: the limit, labelled at the left end where
+                neither curve is. */}
             <line
               x1={PLOT.left}
               x2={PLOT.right}
@@ -144,9 +186,8 @@ export function Wall() {
               strokeDasharray="4 3"
             />
             <text
-              x={PLOT.right}
-              y={yFor(HCU.DEPTH_LIMIT) - 8}
-              textAnchor="end"
+              x={PLOT.left + 8}
+              y={yFor(HCU.DEPTH_LIMIT) - 9}
               fill="var(--fault)"
               fontFamily="var(--font-data)"
               fontSize="11"
@@ -154,72 +195,72 @@ export function Wall() {
               5,000,000 HCU. Transaction reverts here.
             </text>
 
-            {/* linear scan */}
+            {/* Each curve labelled at its own endpoint, in its own colour. */}
             <path d={pathFor(linearDepth)} fill="none" stroke="var(--fault)" strokeWidth="2" />
-            <circle cx={xFor(LINEAR_SCAN_WALL)} cy={yFor(HCU.DEPTH_LIMIT)} r="4" fill="var(--fault)" />
             <text
-              x={xFor(LINEAR_SCAN_WALL) + 9}
-              y={yFor(HCU.DEPTH_LIMIT) + 20}
+              x={xFor(LINEAR_EXIT) + 10}
+              y={PLOT.top + 34}
               fill="var(--fault)"
               fontFamily="var(--font-data)"
               fontSize="11"
             >
-              {LINEAR_SCAN_WALL} depositors
+              Linear scan. Reverts at {LINEAR_SCAN_WALL}.
             </text>
 
-            {/* the walk */}
-            <path d={pathFor(walkDepth)} fill="none" stroke="var(--brass)" strokeWidth="2" />
+            <path d={pathFor(drawDepth)} fill="none" stroke="var(--gleam)" strokeWidth="2" />
+            {/* Both curves leave the top of the plot, so both labels live up
+                there. They are separated vertically and anchored to opposite
+                edges, because side by side at the same height is exactly how
+                the previous version became unreadable. */}
+            <text
+              x={PLOT.right}
+              y={PLOT.top + 12}
+              textAnchor="end"
+              fill="var(--gleam)"
+              fontFamily="var(--font-data)"
+              fontSize="11"
+            >
+              Sortis. Reverts at {firstFail.stakes}.
+            </text>
 
-            {/* measured points */}
             {fits.map((row) => (
               <circle
                 key={row.stakes}
                 cx={xFor(row.stakes)}
                 cy={yFor(row.depth)}
-                r="3"
-                fill="var(--brass)"
+                r="2.5"
+                fill="var(--gleam)"
               />
             ))}
 
-            {/* the shipped shard size */}
+            {/* Annotation two: the shipped shard. Marker in the plot, label
+                below the axis so nothing floats over a curve. */}
             <line
               x1={xFor(ceiling.stakes)}
               x2={xFor(ceiling.stakes)}
               y1={yFor(ceiling.depth)}
               y2={PLOT.bottom}
-              stroke="var(--brass)"
+              stroke="var(--gleam)"
               strokeWidth="1"
               strokeDasharray="2 3"
             />
-            <circle cx={xFor(ceiling.stakes)} cy={yFor(ceiling.depth)} r="5" fill="var(--brass)" />
-            <text
-              x={xFor(ceiling.stakes) - 10}
-              y={yFor(ceiling.depth) - 12}
-              textAnchor="end"
-              fill="var(--brass)"
-              fontFamily="var(--font-data)"
-              fontSize="11"
-            >
-              {ceiling.stakes} stakes, {(ceiling.depth / 1_000_000).toFixed(2)}M. One shard.
-            </text>
-
-            {/* where the walk itself runs out */}
             <circle
-              cx={xFor(firstFail.stakes)}
-              cy={yFor(HCU.DEPTH_LIMIT)}
-              r="3"
+              cx={xFor(ceiling.stakes)}
+              cy={yFor(ceiling.depth)}
+              r="5"
               fill="none"
-              stroke="var(--brass)"
-              strokeWidth="1.5"
+              stroke="var(--gleam)"
+              strokeWidth="2"
             />
             <text
-              x={xFor(firstFail.stakes) + 8}
-              y={yFor(HCU.DEPTH_LIMIT) - 10}
-              fill="var(--brass)"
+              x={xFor(ceiling.stakes)}
+              y={PLOT.bottom + 38}
+              textAnchor="middle"
+              fill="var(--gleam)"
               fontFamily="var(--font-data)"
               fontSize="11"
             >
-              {firstFail.stakes} reverts
+              one shard
             </text>
 
             <line
@@ -227,7 +268,7 @@ export function Wall() {
               x2={PLOT.left}
               y1={PLOT.top}
               y2={PLOT.bottom}
-              stroke="var(--graphite)"
+              stroke={AXIS}
               strokeWidth="1"
             />
             <line
@@ -235,7 +276,7 @@ export function Wall() {
               x2={PLOT.right}
               y1={PLOT.bottom}
               y2={PLOT.bottom}
-              stroke="var(--graphite)"
+              stroke={AXIS}
               strokeWidth="1"
             />
           </svg>
@@ -247,7 +288,7 @@ export function Wall() {
             Linear scan, one dependent add per depositor
           </span>
           <span className={styles.legendItem}>
-            <span className={styles.legendSwatch} style={{ background: "var(--brass)" }} />
+            <span className={styles.legendSwatch} style={{ background: "var(--gleam)" }} />
             Sortis, one encrypted descent per tree level
           </span>
         </div>
@@ -266,9 +307,9 @@ export function Wall() {
                 <span className={styles.rowValue}>{HCU.ADD_CT_CT.toLocaleString("en-US")} HCU</span>
               </div>
               <div className={styles.row}>
-                <span className={styles.rowLabel}>At 64 stakes</span>
+                <span className={styles.rowLabel}>At 32 stakes</span>
                 <span className={styles.rowValue} data-tone="fault">
-                  {linearDepth(64).toLocaleString("en-US")} HCU
+                  {linearDepth(32).toLocaleString("en-US")} HCU
                 </span>
               </div>
               <div className={styles.row}>
@@ -290,18 +331,18 @@ export function Wall() {
             <div className={styles.panelHead}>
               <span className={styles.panelTitle}>Sortis, one shard</span>
               <span className={styles.panelVerdict} data-tone="brass">
-                {pctOf(ceiling.depth, HCU.DEPTH_LIMIT)} of budget
+                {((ceiling.depth / HCU.DEPTH_LIMIT) * 100).toFixed(0)}% of budget
               </span>
             </div>
             <div className={styles.rows}>
               <div className={styles.row}>
                 <span className={styles.rowLabel}>Cost per tree level</span>
                 <span className={styles.rowValue}>
-                  {HCU.WALK_PER_LEVEL.toLocaleString("en-US")} HCU
+                  {HCU.DRAW_PER_LEVEL.toLocaleString("en-US")} HCU
                 </span>
               </div>
               <div className={styles.row}>
-                <span className={styles.rowLabel}>Draw at 64 stakes</span>
+                <span className={styles.rowLabel}>Draw at {ceiling.stakes} stakes</span>
                 <span className={styles.rowValue} data-tone="brass">
                   {ceiling.depth.toLocaleString("en-US")} HCU
                 </span>
@@ -324,16 +365,15 @@ export function Wall() {
 
         <p className={styles.provenance}>
           Measured by <code>test/HCU.t.ts</code> against the FHEVM mock coprocessor at commit{" "}
-          <a href={`${REPO_URL}/commit/${MEASUREMENT_COMMIT}`}>{MEASUREMENT_COMMIT}</a>, which sweeps
-          register sizes until the walk reverts rather than assuming where it will. Depth is the
-          budget that binds, not global work, so the ceiling cannot be raised by splitting a draw
-          across transactions. Run <code>npm test</code> to reproduce every number on this page.
+          <a href={`${REPO_URL}/commit/${MEASUREMENT_COMMIT}`}>{MEASUREMENT_COMMIT}</a>, sweeping
+          register sizes until a draw reverts rather than assuming where it will. A real draw on
+          Sepolia at height {SEPOLIA_CHECK.height} reported{" "}
+          {SEPOLIA_CHECK.depth.toLocaleString("en-US")} HCU against the mock&rsquo;s{" "}
+          {SEPOLIA_CHECK.mockDepth.toLocaleString("en-US")}, so the two agree exactly. Depth is the
+          budget that binds, not global work, so this ceiling cannot be raised by splitting a draw
+          across transactions. Run <code>npm test</code> to reproduce every number here.
         </p>
       </div>
     </section>
   );
-}
-
-function pctOf(value: number, limit: number): string {
-  return `${((value / limit) * 100).toFixed(0)}%`;
 }
