@@ -1,0 +1,35 @@
+node_modules/
+
+# Hardhat
+artifacts/
+cache/
+typechain-types/
+fhevmTemp/
+
+# TypeScript
+dist/
+*.tsbuildinfo
+
+# Secrets
+.env
+.env.local
+
+# Coverage and reports
+coverage/
+coverage.json
+gas-report.txt
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+deployments/
+
+# Unrelated to Sortis: agent tooling and design-reference dumps for other
+# projects that happen to live in this working directory.
+.agents/
+skills-lock.json
+fd-design/
+osero-design/
+pro-design/
+t54-design/

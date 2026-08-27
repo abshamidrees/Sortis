@@ -1,0 +1,33 @@
+{
+  "name": "sortis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Confidential prize-linked savings. Encrypted weight register, O(log N) draw.",
+  "license": "BSD-3-Clause-Clear",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:hcu": "hardhat test test/HCU.t.ts",
+    "clean": "hardhat clean",
+    "node": "hardhat node",
+    "typecheck": "tsc --noEmit",
+    "deploy": "hardhat run scripts/deploy.ts",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "cycle:sepolia": "hardhat run scripts/cycle.ts --network sepolia"
+  },
+  "devDependencies": {
+    "@fhevm/hardhat-plugin": "^0.4.2",
+    "@fhevm/mock-utils": "0.4.2",
+    "@fhevm/solidity": "^0.11.1",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/confidential-contracts": "^0.5.3",
+    "@openzeppelin/contracts": "^5.6.1",
+    "@playwright/test": "^1.62.1",
+    "@zama-fhe/relayer-sdk": "0.4.1",
+    "dotenv": "^16.6.1",
+    "encrypted-types": "^0.0.4",
+    "hardhat": "^2.29.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
