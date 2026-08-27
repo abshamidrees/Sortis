@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.27;
 
-import {FHE, euint64, ebool, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
+import {FHE, euint64, euint16, ebool, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 import {IERC7984} from "@openzeppelin/confidential-contracts/interfaces/IERC7984.sol";
 import {FHESafeMath} from "@openzeppelin/confidential-contracts/utils/FHESafeMath.sol";
 
@@ -47,6 +47,17 @@ contract SortisPool is SortisRegister, SortisTwab {
     /// @notice The confidential asset the pool holds. cUSDT on Sepolia.
     IERC7984 public immutable asset;
 
+    /// @notice Governance. Sets the two privileged peers below, nothing else.
+    /// @dev Named governor rather than owner because every inherited view takes
+    ///      an `owner` parameter and the shadowing reads badly.
+    address public governor;
+
+    /// @notice The only address allowed to walk the register.
+    address public drawContract;
+
+    /// @notice The only address allowed to credit a stake without a transfer.
+    address public wrapQueue;
+
     // ---------------------------------------------------------------------
     // Events
     // ---------------------------------------------------------------------
@@ -60,6 +71,12 @@ contract SortisPool is SortisRegister, SortisTwab {
     event Released(address indexed owner, uint256 indexed leaf);
 
     error AssetNotSet();
+    error NotOwner();
+    error NotDrawContract();
+    error NotWrapQueue();
+
+    event DrawContractSet(address indexed drawContract);
+    event WrapQueueSet(address indexed wrapQueue);
 
     // ---------------------------------------------------------------------
     // Constructor
@@ -73,6 +90,100 @@ contract SortisPool is SortisRegister, SortisTwab {
     constructor(address confidentialAsset, uint8 depth) SortisRegister(depth) {
         if (confidentialAsset == address(0)) revert AssetNotSet();
         asset = IERC7984(confidentialAsset);
+        governor = msg.sender;
+    }
+
+    // ---------------------------------------------------------------------
+    // Governance
+    // ---------------------------------------------------------------------
+
+    /**
+     * @notice Authorise the draw contract to walk the register.
+     * @dev WORST-CASE HCU DEPTH: 0. Plaintext write.
+     *
+     *      The draw is a separate contract because the brief separates them,
+     *      but `_walk` is internal, so the pool has to hand it a door. This is
+     *      that door and it is the only one.
+     */
+    function setDrawContract(address newDrawContract) external {
+        if (msg.sender != governor) revert NotOwner();
+        drawContract = newDrawContract;
+        emit DrawContractSet(newDrawContract);
+    }
+
+    /**
+     * @notice Authorise the wrap queue to credit stakes on settlement.
+     * @dev WORST-CASE HCU DEPTH: 0. Plaintext write.
+     */
+    function setWrapQueue(address newWrapQueue) external {
+        if (msg.sender != governor) revert NotOwner();
+        wrapQueue = newWrapQueue;
+        emit WrapQueueSet(newWrapQueue);
+    }
+
+    // ---------------------------------------------------------------------
+    // Privileged peers
+    // ---------------------------------------------------------------------
+
+    /**
+     * @notice Resolve `lot` to an encrypted leaf index. Draw contract only.
+     *
+     * @dev WORST-CASE HCU DEPTH: see `_walk`. About 240,250 per level of the
+     *      ACTIVE subtree, which is `activeHeight()` levels, not DEPTH.
+     *
+     *      The returned index is granted persistently to the caller rather than
+     *      transiently, because SortisDraw stores it and settles the prize in a
+     *      later transaction. A transient grant would expire before the winner
+     *      could claim.
+     */
+    function walkForDraw(euint64 lot) external returns (euint16 leafIndex) {
+        if (msg.sender != drawContract) revert NotDrawContract();
+        leafIndex = _walk(lot);
+        FHE.allow(leafIndex, msg.sender);
+    }
+
+    /**
+     * @notice Credit a stake without pulling a transfer. Wrap queue only.
+     *
+     * @dev WORST-CASE HCU DEPTH: 713,000, the same chain as `commit`.
+     *
+     *      The queue has already taken public USDT and wrapped it, so the funds
+     *      are in hand and there is nothing to pull. Everything else -- the
+     *      accrual, the register update, the ACL grant to the owner -- is
+     *      identical to a direct commit, which is what makes a queued stake
+     *      indistinguishable from a walk-in one once it lands.
+     */
+    function creditFromQueue(address stakeOwner, euint64 amount) external {
+        if (msg.sender != wrapQueue) revert NotWrapQueue();
+
+        uint256 leaf = _leafFor(stakeOwner);
+        _startClock(stakeOwner);
+
+        euint64 accruedWeight = _accrue(stakeOwner);
+        _update(leaf, accruedWeight, FHE.asEbool(true));
+
+        euint64 balance = confidentialBalanceOf(stakeOwner);
+        _setBalance(stakeOwner, FHE.isInitialized(balance) ? FHE.add(balance, amount) : amount);
+
+        emit Committed(stakeOwner, leaf);
+    }
+
+    /**
+     * @notice Make the register root publicly decryptable, and grant it to the
+     *         draw contract. Draw contract only.
+     *
+     * @dev WORST-CASE HCU DEPTH: 0. ACL operations only.
+     *
+     *      The total weight becomes public. That is deliberate and it is what
+     *      the brief means by publishing the tree root: a draw nobody can
+     *      verify the denominator of is not verifiable at all. The total is an
+     *      aggregate over every stake and says nothing about any one of them.
+     */
+    function publishRootForDraw() external returns (euint64 currentRoot) {
+        if (msg.sender != drawContract) revert NotDrawContract();
+        currentRoot = root();
+        FHE.allow(currentRoot, msg.sender);
+        FHE.makePubliclyDecryptable(currentRoot);
     }
 
     // ---------------------------------------------------------------------

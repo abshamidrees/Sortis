@@ -80,6 +80,8 @@ checkpointed transactions and a chain that is too long is not.
 | [`SortisRegister.sol`](contracts/SortisRegister.sol) | Encrypted segment tree. `_update` (O(log N), flat depth) and `_walk` (oblivious descent). |
 | [`SortisTwab.sol`](contracts/SortisTwab.sol) | Time-weighted balance observations. Scalar `FHE.mul` for the time multiplier. |
 | [`SortisPool.sol`](contracts/SortisPool.sol) | `commit` and `release`. Over-withdrawal is an encrypted no-op, never a revert. |
+| [`SortisDraw.sol`](contracts/SortisDraw.sol) | `openDraw` then `drawLot`, two transactions. Native `FHE.randEuint64`, winner never revealed. |
+| [`SortisWrapQueue.sol`](contracts/SortisWrapQueue.sol) | Epoch-batched wrapping of public USDT into confidential stakes. |
 
 Every function states its worst-case HCU depth in a comment above it.
 
@@ -93,6 +95,62 @@ an encrypted success flag and leaves the balance untouched on failure. A refused
 release transfers zero, writes back the same balance, emits the same event, and
 matches an honoured one on gas, HCU depth and global HCU — all asserted in
 `test/Pool.t.ts`.
+
+### The draw is two transactions, and the order is the argument
+
+`openDraw` commits the register root and the block. At that moment no randomness
+exists anywhere. `drawLot` produces the lot in a **later** block with
+`FHE.randEuint64`, and refuses to run in the opening block. It also refuses if
+the root handle changed in between — handles are content-derived, so a single
+commit or release anywhere in the pool voids the draw. That turns "the operator
+promised not to reshape the tree" into something the contract checks.
+
+The lot must land uniformly in `[0, totalWeight)`, and every reduction FHEVM
+offers takes a **plaintext** bound: there is no ciphertext-ciphertext remainder,
+and `FHE.randEuint64(bound)` reverts with `NotPowerOfTwo` unless the bound is a
+power of two. So the total weight has to be public. `openDraw` marks the
+committed root publicly decryptable; `drawLot` takes the KMS cleartext plus its
+proof, verifies with `FHE.checkSignatures`, and decodes the total **from the
+bytes it verified** — an operator who forges the denominator fails verification.
+Fetching that proof is an off-chain read, so the flow stays at two transactions.
+
+### The prize is claimed, not pushed
+
+The brief asks `drawLot` to grant the prize to the drawn leaf's owner with
+`FHE.allow`. That cannot be done there, for a structural reason:
+
+```
+FHE.allow(handle, account)  takes a PLAINTEXT address
+the walk resolves to an     ENCRYPTED leaf index
+_leafOwner[index]           needs a plaintext index
+```
+
+Decrypting the index to complete the grant would publish the winner, which is
+the one thing the walk exists to prevent. So the grant happens in `claimPrize`,
+at the only moment a plaintext address exists: when someone shows up holding
+one. Each claimant compares their own leaf against the encrypted resolved leaf,
+selects the prize or zero on the encrypted result, and confidentially transfers
+that. Losers transfer an encrypted zero. Gas, HCU depth and global HCU are
+identical across claims — asserted in `test/Draw.t.ts` — so an observer learns
+who tried and nothing else.
+
+### The walk descends only the occupied subtree
+
+Leaves are allocated from zero upward, so every stake lives in `[0, highWater)`.
+`_walk` starts at the subtree covering that range instead of at the root, which
+makes the draw cost `O(stakes)` rather than `O(capacity)`. A pool deployed at
+the production depth of 16 with five stakes descends a height-3 subtree:
+
+```
+drawLot on a DEPTH 16 register holding 5 stakes
+active height  3
+seq depth      1,998,000  (39.96% of 5,000,000)
+global HCU     2,837,192  (14.19% of 20,000,000)
+```
+
+Without it a DEPTH 16 draw needs ~3.6 billion global HCU and reverts. The 2^8
+ceiling from the walk section is a ceiling on **stakes in the register**, not on
+the capacity you deploy with.
 
 ## Running it
 
@@ -111,15 +169,21 @@ npm run deploy:sepolia
 npm run cycle:sepolia
 ```
 
-Both need a funded deployer. Copy `.env.example` to `.env` and set `PRIVATE_KEY`
+Then a full prize round — open, wait a block, draw, claim:
+
+```bash
+npm run draw:sepolia
+```
+
+All three need a funded deployer. Copy `.env.example` to `.env` and set `PRIVATE_KEY`
 or `MNEMONIC`; the default is the public Hardhat test phrase, which never has
 Sepolia ETH.
 
 ## Status
 
-Built: the register, the walk, the TWAB, the pool, and the HCU suite.
-Not yet built: `SortisDraw`, `SortisWrapQueue`, the yield adapter, and the three
-frontends.
+Built: the register, the walk, the TWAB, the pool, the draw, the wrap queue, a
+mock yield adapter, and the HCU suite. 44 tests pass.
+Not yet built: the three frontends.
 
 The TWAB has a known gap documented at the top of [`SortisTwab.sol`](contracts/SortisTwab.sol):
 weight accrues only when a balance changes, so a stake that is committed and left

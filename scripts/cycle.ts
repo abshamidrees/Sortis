@@ -50,9 +50,9 @@ async function main() {
   console.log(`network ${network}   pool ${record.pool}   depth ${record.depth}`);
   console.log(`account ${signer.address}\n`);
 
-  const readStake = () =>
+  const readStake = async () =>
     fhevm.userDecryptEuint(FhevmType.euint64, await pool.stakeOf(signer.address), record.pool, signer);
-  const readWallet = () =>
+  const readWallet = async () =>
     fhevm.userDecryptEuint(
       FhevmType.euint64,
       await usdt.confidentialBalanceOf(signer.address),

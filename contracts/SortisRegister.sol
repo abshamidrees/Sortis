@@ -122,6 +122,22 @@ contract SortisRegister is ZamaEthereumConfig {
     ///      is not a secret, only what is in them.
     uint256 private _leafCount;
 
+    /**
+     * @dev One past the highest leaf index ever written by `_update`.
+     *
+     *      Leaves are handed out from zero upward, so every leaf carrying
+     *      weight lives in [0, _leafHighWater). That makes the subtree covering
+     *      [0, 2^h) for the smallest such h a complete container for the whole
+     *      register, and it is the only part `_walk` has to descend. Tracking
+     *      it costs one plaintext SSTORE on the rare update that extends the
+     *      range and turns the walk's cost from O(capacity) into O(stakes).
+     *
+     *      Not a secret: `_update` writes a visible path of storage slots, so
+     *      which leaves are in use is already public. See the note above
+     *      `_walk`.
+     */
+    uint256 private _leafHighWater;
+
     // ---------------------------------------------------------------------
     // Errors and events
     // ---------------------------------------------------------------------
@@ -183,6 +199,40 @@ contract SortisRegister is ZamaEthereumConfig {
      */
     function leafCount() public view returns (uint256) {
         return _leafCount;
+    }
+
+    /**
+     * @notice Height of the subtree a draw actually has to descend.
+     *
+     * @dev WORST-CASE HCU DEPTH: 0. Plaintext arithmetic.
+     *
+     *      The smallest h with 2^h >= the number of leaves in use. Because
+     *      leaves are allocated from zero upward, the subtree covering
+     *      [0, 2^h) holds the entire weight of the register, so `_walk` can
+     *      start there instead of at the root and skip DEPTH - h levels
+     *      entirely.
+     *
+     *      This is what makes a draw affordable on a production-sized register.
+     *      The walk's global HCU is O(2^activeHeight), NOT O(2^DEPTH): a pool
+     *      deployed at DEPTH 16 with 200 stakes descends a height-8 subtree and
+     *      costs what a 2^8 register costs. The capacity you deployed with is
+     *      free until you fill it.
+     */
+    function activeHeight() public view returns (uint8) {
+        uint256 inUse = _leafHighWater;
+        if (inUse <= 1) return 0;
+
+        uint8 height = 0;
+        while ((uint256(1) << height) < inUse) height++;
+        return height;
+    }
+
+    /**
+     * @notice One past the highest leaf index ever written.
+     * @dev WORST-CASE HCU DEPTH: 0. Plaintext read.
+     */
+    function leafHighWater() public view returns (uint256) {
+        return _leafHighWater;
     }
 
     /**
@@ -293,6 +343,10 @@ contract SortisRegister is ZamaEthereumConfig {
      */
     function _update(uint256 leaf, euint64 delta, ebool isAdd) internal {
         if (leaf >= capacity()) revert LeafOutOfRange(leaf);
+
+        // Plaintext bookkeeping, no HCU. Keeps the walk proportional to the
+        // number of stakes rather than the capacity of the tree.
+        if (leaf >= _leafHighWater) _leafHighWater = leaf + 1;
 
         // Fold the direction into the value. This is the only part of the
         // update that is a dependent chain, and it runs once per call rather
@@ -412,18 +466,33 @@ contract SortisRegister is ZamaEthereumConfig {
      *         FHE.allow before anyone can learn anything from it.
      */
     function _walk(euint64 lot) internal returns (euint16 leafIndex) {
+        // Descend only the subtree that actually holds stakes. Everything to
+        // the right of leaf `_leafHighWater` is empty, so the levels above the
+        // active subtree can only ever branch one way and cost nothing to skip.
+        uint8 height = activeHeight();
+
+        // Nothing to resolve: an empty register, or a single leaf that must be
+        // the answer. Either way the index is zero and no comparison is needed.
+        if (height == 0) {
+            leafIndex = FHE.asEuint16(0);
+            FHE.allowThis(leafIndex);
+            return leafIndex;
+        }
+
+        uint256 subtreeRoot = uint256(1) << (DEPTH - height);
+
         // Branch decisions, most significant first. `goesLeft[k]` is true when
         // the lot landed in the left subtree at level k. These stay ebool for
         // the entire descent; nothing here is ever decrypted or branched on.
-        ebool[] memory goesLeft = new ebool[](DEPTH);
+        ebool[] memory goesLeft = new ebool[](height);
 
         // How much of the lot is left after skipping the subtrees to our left.
         euint64 remaining = lot;
 
-        for (uint256 level = 0; level < DEPTH; level++) {
+        for (uint256 level = 0; level < height; level++) {
             // The current node's left child, resolved without knowing which
             // node the current node is. This is the expensive part.
-            euint64 leftSum = _obliviousLeftChildSum(level, goesLeft);
+            euint64 leftSum = _obliviousLeftChildSum(subtreeRoot, level, goesLeft);
 
             // ONE FHE.lt per level. The lot falls in the left subtree exactly
             // when what remains of it is smaller than the left subtree's total.
@@ -467,11 +536,14 @@ contract SortisRegister is ZamaEthereumConfig {
      *      newest bit and turn a 55,000 tail into a `level` * 55,000 tail.
      */
     function _obliviousLeftChildSum(
+        uint256 subtreeRoot,
         uint256 level,
         ebool[] memory goesLeft
     ) private returns (euint64) {
-        uint256 width = 1 << level;
-        uint256 base = 1 << (level + 1);
+        uint256 width = uint256(1) << level;
+        // Left children of the level's nodes, relative to the subtree root.
+        // For subtreeRoot == 1 this is the plain heap indexing.
+        uint256 base = subtreeRoot << (level + 1);
 
         euint64[] memory candidates = new euint64[](width);
         for (uint256 j = 0; j < width; j++) {
@@ -512,7 +584,7 @@ contract SortisRegister is ZamaEthereumConfig {
      *      bitwise OR written as a sum because addition reduces more cheaply.
      */
     function _packLeafIndex(ebool[] memory goesLeft) private returns (euint16) {
-        uint256 levels = DEPTH;
+        uint256 levels = goesLeft.length;
         euint16[] memory parts = new euint16[](levels);
         euint16 zero = FHE.asEuint16(0);
 
