@@ -43,6 +43,12 @@ async function main() {
     throw new Error(`no deployments/${network}.json -- run scripts/deploy.ts --network ${network} first`);
   }
 
+  // The relayer/KMS client is lazily constructed and is NOT initialized for
+  // `hardhat run` on a live network -- only the test runner does it for you.
+  // Without this, the first fhevm.* call fails with
+  // "The Hardhat Fhevm plugin is not initialized."
+  await fhevm.initializeCLIApi();
+
   const [signer] = await ethers.getSigners();
   const usdt = await ethers.getContractAt("MockConfidentialUSDT", record.cUSDT, signer);
   const pool = await ethers.getContractAt("SortisPool", record.pool, signer);

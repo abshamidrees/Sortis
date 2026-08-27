@@ -1,0 +1,246 @@
+/* The draw column. A kleroterion plate: a channel down the left edge, a column
+   of slots on the right, a brass token descending one level per beat.
+
+   Motion is DISCRETE. Sixteen steps, not a slide. The token snaps between
+   levels with --ease-step and never eases through them, because each step is a
+   tree level and blurring them together would sell the wrong idea. */
+
+.plate {
+  position: relative;
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: var(--s-4);
+  padding: var(--s-5) var(--s-5) var(--s-5) var(--s-4);
+  background: var(--slab);
+  border: var(--hairline);
+  border-radius: var(--r-plate);
+  /* Carved, not floating. One flat inset line reads as a cut edge; a drop
+     shadow would read as a card. */
+  box-shadow: inset 0 1px 0 var(--chalk);
+  width: 100%;
+  max-width: 420px;
+}
+
+/* ---------------------------------------------------------------- channel */
+
+.channel {
+  position: relative;
+  border-right: var(--hairline);
+  padding-right: var(--s-3);
+}
+
+.channelTrack {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--rule);
+  border-radius: 1px;
+}
+
+/* The descending token. Positioned by --token-y, a whole number of slot
+   pitches, so it can only ever land ON a level. */
+.token {
+  position: absolute;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-wash);
+  top: calc(var(--slot-pitch) * var(--token-y) + var(--slot-pitch) / 2);
+  transition: top var(--beat) var(--ease-step);
+  z-index: 2;
+}
+
+.token[data-resolved="true"] {
+  background: var(--gleam);
+  box-shadow: 0 0 0 5px var(--brass-wash);
+  transition:
+    top var(--beat) var(--ease-step),
+    background var(--beat) linear,
+    box-shadow var(--beat) var(--ease-settle);
+}
+
+/* Level ticks. Sixteen of them, one per beat, so the count is legible without
+   anyone having to trust the label. */
+.tick {
+  position: absolute;
+  left: 50%;
+  width: 6px;
+  height: 1px;
+  margin-left: -3px;
+  background: var(--rule);
+  top: calc(var(--slot-pitch) * var(--tick-i) + var(--slot-pitch) / 2);
+}
+
+.tick[data-passed="true"] {
+  background: var(--brass);
+  opacity: 0.4;
+}
+
+/* ------------------------------------------------------------------ slots */
+
+.slots {
+  display: flex;
+  flex-direction: column;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: var(--slot-pitch);
+  padding: 0 var(--s-2);
+  border-bottom: 1px solid transparent;
+  border-radius: var(--r-slot);
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--seal);
+  background: var(--seal-wash);
+  margin-bottom: 2px;
+  transition:
+    color var(--beat) linear,
+    background var(--beat) linear,
+    opacity var(--beat) var(--ease-step);
+}
+
+/* Eliminated. Dimmed out of the search, not hidden -- the viewer should still
+   see that the row exists and simply is not the answer. */
+.slot[data-state="eliminated"] {
+  color: var(--graphite);
+  background: transparent;
+  opacity: 0.28;
+}
+
+/* Drawn. The one slot that survives sixteen halvings. */
+.slot[data-state="drawn"] {
+  color: var(--chalk);
+  background: var(--brass);
+  opacity: 1;
+}
+
+/* The moment of resolution. One flash of gleam, then settle to brass. Runs
+   once; it is punctuation, not decoration. */
+.slot[data-flash="true"] {
+  animation: resolve calc(var(--beat) * 4) var(--ease-settle) 1;
+}
+
+@keyframes resolve {
+  0% {
+    background: var(--gleam);
+    box-shadow: 0 0 0 4px var(--brass-wash);
+  }
+  60% {
+    background: var(--gleam);
+    box-shadow: 0 0 0 2px var(--brass-wash);
+  }
+  100% {
+    background: var(--brass);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.slotIndex {
+  flex: none;
+  width: 2.25ch;
+  text-align: right;
+  font-size: 0.625rem;
+  color: var(--graphite);
+  opacity: 0.7;
+}
+
+.slot[data-state="drawn"] .slotIndex {
+  color: var(--brass-wash);
+  opacity: 0.9;
+}
+
+.slotHandle {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The drawn address decrypts its own value in place. Everyone else keeps
+   looking at the handle. */
+.slotRevealed {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk);
+}
+
+/* ----------------------------------------------------------------- readout */
+
+.readout {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: var(--hairline);
+}
+
+.readoutLabel {
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+/* The whole argument in one number: 65,536 candidates down to 1 in sixteen
+   beats. Tabular so the digits do not jitter as it halves. */
+.readoutValue {
+  font-family: var(--font-data);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.readoutValue[data-resolved="true"] {
+  color: var(--brass);
+}
+
+/* ------------------------------------------------------------ replay/still */
+
+.replay {
+  appearance: none;
+  border: var(--hairline);
+  background: var(--chalk);
+  color: var(--graphite);
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  padding: var(--s-1) var(--s-3);
+  border-radius: var(--r-slot);
+  cursor: pointer;
+}
+
+.replay:hover {
+  color: var(--ink);
+  border-color: var(--graphite);
+}
+
+/* Reduced motion: no transitions at all. The component renders the resolved
+   state directly, so there is nothing to animate and nothing to suppress
+   halfway through. */
+@media (prefers-reduced-motion: reduce) {
+  .token,
+  .slot {
+    transition: none;
+  }
+  .slot[data-flash="true"] {
+    animation: none;
+  }
+}

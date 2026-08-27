@@ -1,0 +1,75 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/* Tailwind v4 reads its theme from CSS. Map the Sortis tokens in so utility
+   classes and hand-written CSS cannot drift apart. */
+@theme inline {
+  --color-stone: var(--stone);
+  --color-slab: var(--slab);
+  --color-chalk: var(--chalk);
+  --color-ink: var(--ink);
+  --color-graphite: var(--graphite);
+  --color-rule: var(--rule);
+  --color-seal: var(--seal);
+  --color-brass: var(--brass);
+  --color-gleam: var(--gleam);
+  --color-fault: var(--fault);
+  --color-seal-wash: var(--seal-wash);
+  --color-brass-wash: var(--brass-wash);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-data: var(--font-data);
+
+  --radius-slot: var(--r-slot);
+  --radius-card: var(--r-card);
+  --radius-plate: var(--r-plate);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--stone);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  letter-spacing: var(--track-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: var(--track-display);
+  line-height: 1.05;
+  margin: 0;
+}
+
+.eyebrow {
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+/* Focus is brass. It is the only place the accent appears without meaning
+   "drawn", and it is worth the exception for visibility. */
+:where(a, button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--gleam);
+  outline-offset: 2px;
+  border-radius: var(--r-slot);
+}
