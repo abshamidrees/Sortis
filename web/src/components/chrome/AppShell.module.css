@@ -1,0 +1,401 @@
+/* App routes. Labels and numbers, not prose.
+   Nothing here carries a headline above 20px and nothing floats without a
+   frame. */
+
+.main {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: var(--s-5) var(--s-5) var(--s-8);
+}
+
+@media (min-width: 900px) {
+  .main {
+    padding: var(--s-6) var(--s-6) var(--s-9);
+  }
+}
+
+/* An empty-state panel sits in the middle of the space it has, not pinned to
+   the top of it. A card floating above 900px of nothing reads unfinished. */
+.centred {
+  min-height: calc(100vh - 64px - 56px - var(--s-9));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------------ panels */
+
+/* Every panel has a label strip and a hairline. A panel that floats without a
+   frame reads unfinished. */
+.panel {
+  border: var(--hairline);
+  border-radius: var(--r-card);
+  background: var(--slab);
+  min-width: 0;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: var(--hairline);
+}
+
+.panelLabel {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+.panelMeta {
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--graphite);
+}
+
+.panelBody {
+  padding: var(--s-4);
+}
+
+.panelBodyFlush {
+  padding: 0;
+}
+
+/* ------------------------------------------------------------ key/value grid */
+
+.kv {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: var(--s-3) var(--s-5);
+  align-items: baseline;
+}
+
+.kvKey {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+  white-space: nowrap;
+}
+
+.kvValue {
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* -------------------------------------------------------------------- table */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-data);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th {
+  text-align: left;
+  padding: var(--s-3) var(--s-4);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+  border-bottom: var(--hairline);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table a {
+  color: var(--seal);
+}
+
+/* An empty table says so inside its own frame. Never a floating paragraph. */
+.empty {
+  padding: var(--s-5) var(--s-4);
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--graphite);
+}
+
+/* ------------------------------------------------------------------ splits */
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-5);
+  align-items: start;
+}
+
+@media (min-width: 1040px) {
+  /* Draw: plate left, panels right. */
+  .split[data-ratio="60/40"] {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+  /* Three panels, none of them more than half the width.
+     Structure from Reya, which runs chart, trades feed and order form side by
+     side so no single element dominates. Here it is the plate, the draw state
+     and the feed. Nothing but the proportion is borrowed. */
+  .split[data-ratio="thirds"] {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+  /* Register: position and activity left, forms right. */
+  .split[data-ratio="8/4"] {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  min-width: 0;
+}
+
+/* Sub-tabs inside a route.
+   Structure from Morpho's portfolio, which puts Positions, Activity and
+   Migration inside one route rather than spending three nav slots on them. */
+.subtabs {
+  display: flex;
+  gap: var(--s-5);
+  border-bottom: var(--hairline);
+  margin-bottom: var(--s-5);
+}
+
+.subtab {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--graphite);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 0 var(--s-3);
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 120ms var(--ease-step);
+}
+
+.subtab:hover {
+  color: var(--ink);
+}
+
+.subtab[data-active="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--brass);
+}
+
+/* A big number with a secondary metric beside it.
+   Structure from Morpho's portfolio card. The primary figure carries the
+   weight and the secondary sits alongside rather than under, so the pair reads
+   as one fact rather than two stacked ones. */
+.bigNumber {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+}
+
+.bigPrimary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.bigValue {
+  font-family: var(--font-data);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.bigValue[data-encrypted="true"] {
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--seal);
+}
+
+.bigSecondary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-items: flex-end;
+  text-align: right;
+}
+
+/* A dense, scrolling, monospaced event list.
+   Structure from Reya's trades feed: many short rows, tabular figures, and a
+   fixed height that scrolls rather than growing the page. */
+.feed {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------------------- chips */
+
+.chips {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.chip {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+  background: none;
+  border: var(--hairline);
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.chip[data-active="true"] {
+  color: var(--ink);
+  border-color: var(--graphite);
+}
+
+/* ------------------------------------------------------------------- forms */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.input {
+  font-family: var(--font-data);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--chalk);
+  border: var(--hairline);
+  border-radius: var(--r-card);
+  padding: 9px var(--s-3);
+  width: 100%;
+}
+
+.input:focus {
+  outline: 2px solid var(--gleam);
+  outline-offset: 1px;
+}
+
+.button {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--stone);
+  background: var(--brass);
+  border: none;
+  border-radius: var(--r-card);
+  padding: 10px 14px;
+  cursor: pointer;
+  width: 100%;
+  transition: background 120ms var(--ease-step);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--gleam);
+  color: var(--ink);
+}
+
+.button:disabled {
+  background: var(--rule);
+  color: var(--graphite);
+  cursor: default;
+}
+
+.buttonGhost {
+  composes: button;
+  background: none;
+  border: var(--hairline);
+  color: var(--ink);
+}
+
+.buttonGhost:hover:not(:disabled) {
+  background: none;
+  border-color: var(--graphite);
+}
+
+.cost {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--graphite);
+  margin: var(--s-2) 0 0;
+}
+
+.note {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--graphite);
+  margin: var(--s-3) 0 0;
+}
+
+.fault {
+  color: var(--fault);
+}
+
+.brass {
+  color: var(--brass);
+}
+
+/* Decrypt control, inline with the value it acts on. */
+.inlineAction {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+  background: none;
+  border: var(--hairline);
+  border-radius: var(--r-slot);
+  padding: 2px 7px;
+  cursor: pointer;
+  flex: none;
+}
+
+.inlineAction:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--graphite);
+}
+
+.inlineAction:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Relayer progress. A twenty minute fetch you can watch beats a silent
+   spinner that looks hung. */
+.progress {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--seal);
+  margin: var(--s-3) 0 0;
+}

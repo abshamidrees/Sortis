@@ -33,6 +33,37 @@ const HOLD_SECONDS = Number(process.env.LIVE_HOLD_SECONDS ?? 3_660);
 
 const steps: { at: string; step: string; detail: string }[] = [];
 
+/**
+ * Retry transient network failures.
+ *
+ * The hold sleeps for an hour, which is long enough for a keep-alive socket to
+ * be dropped by the RPC or by anything between here and it. The next request
+ * then fails with ECONNRESET before it reaches the chain. That is a dead
+ * socket, not a failed transaction, and the whole run should not be lost to
+ * it: this run got through a commit and a full hour of waiting before dying
+ * on exactly that.
+ */
+async function resilient<T>(label: string, fn: () => Promise<T>, attempts = 4): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const transient =
+        /ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|fetch failed|timeout|connect/i.test(
+          message,
+        );
+      if (!transient || attempt === attempts) throw error;
+      const backoff = 5_000 * attempt;
+      log(`  retry ${attempt}/${attempts - 1}`, `${label}: ${message.slice(0, 60)}, waiting ${backoff}ms`);
+      await new Promise((r) => setTimeout(r, backoff));
+    }
+  }
+  throw lastError;
+}
+
 function log(step: string, detail = "") {
   const at = new Date().toISOString().slice(11, 19);
   steps.push({ at, step, detail });
@@ -46,7 +77,10 @@ async function main() {
 
   log("init", "downloading key material, this takes about twenty minutes");
   const t0 = Date.now();
-  await fhevm.initializeCLIApi();
+  // Wrapped too. This is a 4.6MB fetch from S3 in eu-west-1 over a slow link,
+  // which is exactly the shape of request that times out on a bad minute, and
+  // losing the whole run to it is what happened the first time.
+  await resilient("initializeCLIApi", () => fhevm.initializeCLIApi(), 6);
   log("  ready", `${((Date.now() - t0) / 1000).toFixed(0)}s`);
 
   const [signer] = await ethers.getSigners();
@@ -74,32 +108,48 @@ async function main() {
     );
 
   // ---- fund -------------------------------------------------------------
-  log("mint", `${MINT} base units of cUSDT`);
-  await (await cusdt.mint(signer.address, MINT)).wait();
-  log("setOperator", "authorising the pool to pull");
-  await (await cusdt.setOperator(rec.pool, 2n ** 47n)).wait();
+  if (process.env.LIVE_SKIP_FUND !== "1") {
+    log("mint", `${MINT} base units of cUSDT`);
+    await resilient("mint", async () => (await cusdt.mint(signer.address, MINT)).wait());
+    log("setOperator", "authorising the pool to pull");
+    await resilient("setOperator", async () =>
+      (await cusdt.setOperator(rec.pool, 2n ** 47n)).wait(),
+    );
+  } else {
+    log("fund", "skipped, already funded");
+  }
   log("wallet", `${await readWallet()}`);
 
   // ---- commit -----------------------------------------------------------
-  log("commit", `${COMMIT}`);
-  {
-    const enc = await encrypt(COMMIT);
-    const r = await (await pool.commit(enc.handles[0], enc.inputProof)).wait();
+  if (process.env.LIVE_SKIP_COMMIT !== "1") {
+    log("commit", `${COMMIT}`);
+    const enc = await resilient("encrypt commit", () => encrypt(COMMIT));
+    const r = await resilient("commit", async () =>
+      (await pool.commit(enc.handles[0], enc.inputProof)).wait(),
+    );
     log("  mined", `block ${r!.blockNumber}  gas ${r!.gasUsed}`);
+  } else {
+    log("commit", "skipped, a stake already exists");
   }
   log("stake", `${await readStake()}`);
   log("hour", `${await pool.timeUnitsNow()} since genesis`);
 
   // ---- hold -------------------------------------------------------------
-  log("hold", `${HOLD_SECONDS}s so the stake crosses an hour boundary`);
-  await new Promise((r) => setTimeout(r, HOLD_SECONDS * 1000));
-  log("hour", `${await pool.timeUnitsNow()} since genesis`);
+  if (HOLD_SECONDS > 0) {
+    log("hold", `${HOLD_SECONDS}s so the stake crosses an hour boundary`);
+    await new Promise((r) => setTimeout(r, HOLD_SECONDS * 1000));
+  } else {
+    log("hold", "skipped, the stake already carries weight");
+  }
+  log("hour", `${await resilient("hour", () => pool.timeUnitsNow())} since genesis`);
 
   // ---- release ----------------------------------------------------------
   log("release", `${RELEASE}`);
   {
-    const enc = await encrypt(RELEASE);
-    const r = await (await pool.release(enc.handles[0], enc.inputProof)).wait();
+    const enc = await resilient("encrypt release", () => encrypt(RELEASE));
+    const r = await resilient("release", async () =>
+      (await pool.release(enc.handles[0], enc.inputProof)).wait(),
+    );
     log("  mined", `block ${r!.blockNumber}  gas ${r!.gasUsed}`);
   }
   const stakeAfterRelease = await readStake();
@@ -109,8 +159,10 @@ async function main() {
   // ---- over-release, which must be an encrypted no-op --------------------
   log("release", `${OVER_RELEASE} (more than the stake holds)`);
   {
-    const enc = await encrypt(OVER_RELEASE);
-    const r = await (await pool.release(enc.handles[0], enc.inputProof)).wait();
+    const enc = await resilient("encrypt over-release", () => encrypt(OVER_RELEASE));
+    const r = await resilient("over-release", async () =>
+      (await pool.release(enc.handles[0], enc.inputProof)).wait(),
+    );
     log("  mined", `block ${r!.blockNumber}  gas ${r!.gasUsed}  status ${r!.status}`);
   }
   const stakeFinal = await readStake();
@@ -125,7 +177,7 @@ async function main() {
   await (await yieldAdapter.accrue(PRIZE)).wait();
 
   log("openDraw", "committing the register before any randomness exists");
-  const openReceipt = await (await draw.openDraw()).wait();
+  const openReceipt = await resilient("openDraw", async () => (await draw.openDraw()).wait());
   const drawId = await draw.drawCount();
   const info = await draw.drawInfo(drawId);
   log("  opened", `draw ${drawId} at block ${info[1]}  prize ${info[2]}  hour ${info[6]}`);
@@ -133,7 +185,7 @@ async function main() {
   log("  gas", `${openReceipt!.gasUsed}`);
 
   log("publicDecrypt", "fetching the KMS proof for the committed total");
-  const decrypted = await fhevm.publicDecrypt([info[0]]);
+  const decrypted = await resilient("publicDecrypt", () => fhevm.publicDecrypt([info[0]]));
   const total = ethers.AbiCoder.defaultAbiCoder().decode(
     ["uint256"],
     decrypted.abiEncodedClearValues,
@@ -146,9 +198,9 @@ async function main() {
   }
 
   log("drawLot", "native randomness, reduced modulo the verified total");
-  const lotReceipt = await (
-    await draw.drawLot(drawId, decrypted.abiEncodedClearValues, decrypted.decryptionProof)
-  ).wait();
+  const lotReceipt = await resilient("drawLot", async () =>
+    (await draw.drawLot(drawId, decrypted.abiEncodedClearValues, decrypted.decryptionProof)).wait(),
+  );
   const settled = await draw.drawInfo(drawId);
   log("  drawn", `walk height ${settled[4]}  total ${settled[3]}`);
   log("  resolved leaf", `${await draw.resolvedLeafHandle(drawId)}`);
@@ -157,7 +209,9 @@ async function main() {
   // ---- claim ------------------------------------------------------------
   const before = await readWallet();
   log("claimPrize", "");
-  const claimReceipt = await (await draw.claimPrize(drawId)).wait();
+  const claimReceipt = await resilient("claimPrize", async () =>
+    (await draw.claimPrize(drawId)).wait(),
+  );
   log("  gas", `${claimReceipt!.gasUsed}`);
   const after = await readWallet();
   const won = after - before;

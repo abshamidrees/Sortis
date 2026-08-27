@@ -1,45 +1,60 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 /**
  * Client-side FHEVM: encrypting inputs before they are sent, and running the
- * user-decryption flow so a stake owner can read their own numbers.
+ * EIP-712 user-decryption flow so a stake owner can read their own numbers.
  *
- * Two things make this awkward enough to be worth wrapping:
+ * Two things make this awkward enough to be worth wrapping.
  *
- *   1. The relayer SDK instantiates WASM. It cannot be imported at module
- *      scope in a Next app -- that would drag it into the server bundle and
- *      break the build -- so it is loaded dynamically, once, on first use.
- *   2. `initSDK()` must finish before `createInstance()` is called, and the
- *      instance is expensive enough that it should be built once per session
- *      rather than once per interaction.
+ * The relayer SDK instantiates WASM and cannot be imported at module scope in
+ * a Next app, because that drags it into the server bundle and breaks the
+ * build. It is loaded dynamically, once, on first use.
+ *
+ * `initSDK()` must finish before `createInstance()`, and the first call pulls
+ * 4.6MB of PKE key material from S3 in eu-west-1. That takes about twenty
+ * minutes on a cold cache over a slow link and 27 seconds once warm. A spinner
+ * that hangs silently for twenty minutes is worse than a slow operation you
+ * can watch, so progress is reported rather than swallowed.
  */
 
 type RelayerInstance = Awaited<
   ReturnType<typeof import("@zama-fhe/relayer-sdk/web")["createInstance"]>
 >;
 
+export type FhevmPhase = "idle" | "loading-sdk" | "fetching-keys" | "ready" | "error";
+
+export type FhevmProgress = {
+  phase: FhevmPhase;
+  message: string;
+};
+
 let instancePromise: Promise<RelayerInstance> | null = null;
 
-/** Build the relayer instance, once. Safe to await from anywhere. */
-export function getFhevmInstance(): Promise<RelayerInstance> {
+const RPC =
+  process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
+
+function getInstance(onProgress: (p: FhevmProgress) => void): Promise<RelayerInstance> {
   if (instancePromise) return instancePromise;
 
   instancePromise = (async () => {
+    onProgress({ phase: "loading-sdk", message: "Loading the relayer SDK." });
     const { initSDK, createInstance, SepoliaConfig } = await import("@zama-fhe/relayer-sdk/web");
 
-    // Loads and compiles the WASM. Must complete before createInstance.
+    onProgress({
+      phase: "fetching-keys",
+      message: "Fetching key material, 4.6 MB. First run only.",
+    });
     await initSDK();
 
-    return createInstance({
-      ...SepoliaConfig,
-      network:
-        process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com",
-    });
+    const instance = await createInstance({ ...SepoliaConfig, network: RPC });
+    onProgress({ phase: "ready", message: "Relayer ready." });
+    return instance;
   })().catch((error) => {
-    // Do not cache a failure. A transient relayer timeout should not poison the
-    // session for as long as the tab is open.
+    // Do not cache a failure. A transient relayer timeout should not poison
+    // the session for as long as the tab is open, and these time out often
+    // enough on a slow link that it matters.
     instancePromise = null;
     throw error;
   });
@@ -47,69 +62,107 @@ export function getFhevmInstance(): Promise<RelayerInstance> {
   return instancePromise;
 }
 
-export type FhevmStatus = "idle" | "loading" | "ready" | "error";
-
-/**
- * Load the relayer instance and report progress, so a screen can say "sealing"
- * rather than appearing to hang while several megabytes of WASM compile.
- */
 export function useFhevm() {
-  const [status, setStatus] = useState<FhevmStatus>("idle");
-  const [error, setError] = useState<Error | null>(null);
+  const [progress, setProgress] = useState<FhevmProgress>({ phase: "idle", message: "" });
   const instanceRef = useRef<RelayerInstance | null>(null);
-  const alive = useRef(true);
-
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
 
   const load = useCallback(async () => {
     if (instanceRef.current) return instanceRef.current;
-    setStatus("loading");
-    setError(null);
     try {
-      const instance = await getFhevmInstance();
+      const instance = await getInstance(setProgress);
       instanceRef.current = instance;
-      if (alive.current) setStatus("ready");
+      setProgress({ phase: "ready", message: "" });
       return instance;
-    } catch (caught) {
-      const asError = caught instanceof Error ? caught : new Error(String(caught));
-      if (alive.current) {
-        setError(asError);
-        setStatus("error");
-      }
-      throw asError;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setProgress({ phase: "error", message: `Relayer unreachable. ${message.slice(0, 90)}` });
+      throw error;
     }
   }, []);
 
-  /** Encrypt a euint64 amount for `contractAddress`, submitted by `userAddress`. */
+  /** Encrypt a euint64 amount for `contract`, submitted by `account`. */
   const encryptAmount = useCallback(
-    async (contractAddress: string, userAddress: string, amount: bigint) => {
+    async (contract: string, account: string, amount: bigint) => {
       const instance = await load();
-      const input = instance.createEncryptedInput(contractAddress, userAddress);
+      const input = instance.createEncryptedInput(contract, account);
       input.add64(amount);
       const { handles, inputProof } = await input.encrypt();
-      return { handle: handles[0], inputProof };
+      return {
+        handle: `0x${Buffer.from(handles[0]).toString("hex")}` as `0x${string}`,
+        inputProof: `0x${Buffer.from(inputProof).toString("hex")}` as `0x${string}`,
+      };
     },
     [load],
   );
 
-  return { status, error, load, encryptAmount, instance: instanceRef };
+  /**
+   * EIP-712 user decryption. The wallet signs a typed-data grant scoped to one
+   * contract and a short validity window; the relayer returns the plaintext to
+   * this browser only. Nothing is sent to any server of ours, because there is
+   * no server of ours in the path.
+   */
+  const userDecrypt = useCallback(
+    async (
+      handle: string,
+      contract: string,
+      account: string,
+      signTypedData: (args: {
+        domain: Record<string, unknown>;
+        types: Record<string, unknown>;
+        primaryType: string;
+        message: Record<string, unknown>;
+      }) => Promise<string>,
+    ): Promise<bigint> => {
+      const instance = await load();
+
+      const keypair = instance.generateKeypair();
+      // The SDK takes these as numbers here even though the ABI spells them
+      // as strings elsewhere.
+      const startTimestamp = Math.floor(Date.now() / 1000);
+      const durationDays = 1;
+
+      const eip712 = instance.createEIP712(
+        keypair.publicKey,
+        [contract],
+        startTimestamp,
+        durationDays,
+      );
+
+      const signature = await signTypedData({
+        domain: eip712.domain as unknown as Record<string, unknown>,
+        types: { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
+        primaryType: "UserDecryptRequestVerification",
+        message: eip712.message as unknown as Record<string, unknown>,
+      });
+
+      const results = await instance.userDecrypt(
+        [{ handle, contractAddress: contract }],
+        keypair.privateKey,
+        keypair.publicKey,
+        signature.replace(/^0x/, ""),
+        [contract],
+        account,
+        startTimestamp,
+        durationDays,
+      );
+
+      const value = (results as Record<string, unknown>)[handle];
+      return typeof value === "bigint" ? value : BigInt(String(value ?? 0));
+    },
+    [load],
+  );
+
+  return { progress, load, encryptAmount, userDecrypt };
 }
 
 /**
  * Truncate a ciphertext handle for display: 0x7f2a…c091.
  *
- * The brand rule from docs/BRIEF.md section 5: an encrypted value renders as
- * its REAL handle, in IBM Plex Mono, in --seal. Never asterisks, never a lock
- * icon, never a blurred number. Encryption is the default visual state of this
- * product and the interface should look encrypted at rest.
+ * The brand rule: an encrypted value renders as its REAL handle, in IBM Plex
+ * Mono, in --seal. Never asterisks, never a lock icon, never a blurred number.
  */
 export function truncateHandle(handle: string | null | undefined): string {
-  if (!handle) return "—";
+  if (!handle) return "not set";
   const hex = handle.startsWith("0x") ? handle.slice(2) : handle;
   if (hex.length <= 8) return `0x${hex}`;
   return `0x${hex.slice(0, 4)}…${hex.slice(-4)}`;

@@ -21,6 +21,12 @@
   max-width: 420px;
 }
 
+/* Two columns of slots need the width to hold them, otherwise each row
+   stretches and a slot reads as a banner. */
+.plate[data-columns="2"] {
+  max-width: 560px;
+}
+
 /* A 64-stake shard is 64 rows, so the rows get shorter and lose the index
    column. The plate stays a plate rather than becoming a page. */
 .plate[data-compact="true"] {
@@ -140,7 +146,18 @@
   opacity: 0.3;
 }
 
-/* Drawn. The one slot that survives sixteen halvings. */
+/* Landed but not revealed. The descent ends at one slot and the outline says
+   so, without filling it brass and claiming which real leaf it was. Used
+   whenever the slots carry live chain data, because the resolved leaf is
+   encrypted and no client can locate it. */
+.slot[data-state="landed"] {
+  color: var(--seal);
+  background: transparent;
+  opacity: 1;
+  box-shadow: inset 0 0 0 1.5px var(--brass);
+}
+
+/* Drawn. The one slot that survives the halvings. */
 .slot[data-state="drawn"] {
   color: var(--chalk);
   background: var(--brass);

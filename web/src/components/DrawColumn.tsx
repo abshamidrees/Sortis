@@ -41,6 +41,18 @@ export type DrawColumnProps = {
   revealed?: string | null;
   /** Show a replay control. Off for the hero loop, on for the app. */
   showReplay?: boolean;
+  /**
+   * Whether the drawn slot may be filled brass.
+   *
+   * FALSE whenever the slots carry real chain data. The resolved leaf is an
+   * encrypted euint16 that nobody holds a grant on, so no client can know
+   * which slot the walk landed on. Filling one anyway would be invented data
+   * dressed as a result, which is exactly what the craft standard forbids and
+   * exactly what a cryptography judge would catch. With this off the descent
+   * still runs and the surviving slot is outlined rather than filled, which
+   * says the walk ends at one slot without claiming which.
+   */
+  revealWinner?: boolean;
   onResolve?: (index: number) => void;
   className?: string;
 };
@@ -78,6 +90,7 @@ export function DrawColumn({
   autoPlay = true,
   revealed = null,
   showReplay = false,
+  revealWinner = true,
   onResolve,
   className,
 }: DrawColumnProps) {
@@ -110,6 +123,14 @@ export function DrawColumn({
     return Array.from({ length: slotCount }, () => makeHandle(rand, compact));
   }, [seed, slotCount, compact]);
 
+  /**
+   * Real handles when the caller has them, generated ones otherwise.
+   *
+   * The app route passes handles read from `stakeOf` on Sepolia. The landing
+   * hero has no chain to read and passes none, which is why the generator
+   * stays: a marketing loop illustrating the mechanism is not the same claim
+   * as a route titled "live" showing a simulation.
+   */
   const slotHandles = handles?.length ? handles.slice(0, slotCount) : generatedHandles;
 
   const winner = useMemo(() => {
@@ -210,6 +231,7 @@ export function DrawColumn({
     <div className={className}>
       <div
         className={styles.plate}
+        data-columns={columns}
         data-compact={compact}
         style={{
           ["--slot-pitch" as string]: `${pitch}px`,
@@ -235,27 +257,34 @@ export function DrawColumn({
               data-passed={beat >= 0 && i <= beat}
             />
           ))}
-          <div className={styles.token} data-resolved={resolved} />
+          <div className={styles.token} data-resolved={resolved && revealWinner} />
         </div>
 
         <div className={styles.slots} data-columns={columns}>
           {slotHandles.map((handle, i) => {
             const isDrawn = resolved && i === winner;
-            const alive = i >= surviving.lo && i < surviving.hi;
-            const state = isDrawn ? "drawn" : alive ? "sealed" : "eliminated";
+            const state = isDrawn
+              ? revealWinner
+                ? "drawn"
+                : "landed"
+              : i >= surviving.lo && i < surviving.hi
+                ? "sealed"
+                : "eliminated";
             return (
               <div
                 key={i}
                 className={styles.slot}
                 data-state={state}
-                data-flash={isDrawn && !reducedMotion}
+                data-flash={isDrawn && revealWinner && !reducedMotion}
               >
                 {compact ? null : <span className={styles.slotIndex}>{i}</span>}
                 {/* The handle stays put. A drawn slot the viewer can decrypt
                     shows the value beside it rather than replacing it, so the
                     encrypted identity of the row is never lost. */}
                 <span className={styles.slotHandle}>{handle}</span>
-                {isDrawn && revealed ? <span className={styles.slotRevealed}>{revealed}</span> : null}
+                {isDrawn && revealWinner && revealed ? (
+                  <span className={styles.slotRevealed}>{revealed}</span>
+                ) : null}
               </div>
             );
           })}
@@ -266,8 +295,11 @@ export function DrawColumn({
             {resolved ? "Resolved" : `Level ${Math.max(beat, 0) + (beat < 0 ? 0 : 1)} of ${levels}`}
           </span>
           <span className={styles.readoutValue} data-resolved={resolved}>
-            {candidatesRemaining.toLocaleString("en-US")}
-            {candidatesRemaining === 1 ? " stake" : " stakes"}
+            {resolved && !revealWinner
+              ? "encrypted"
+              : `${candidatesRemaining.toLocaleString("en-US")} ${
+                  candidatesRemaining === 1 ? "stake" : "stakes"
+                }`}
           </span>
           {showReplay ? (
             <button type="button" className={styles.replay} onClick={replay}>

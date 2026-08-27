@@ -1,0 +1,203 @@
+/* Docs. A marketing surface, so headlines and prose are allowed here. */
+
+.main {
+  padding: var(--s-7) var(--s-5) var(--s-9);
+}
+
+@media (min-width: 900px) {
+  .main {
+    padding: var(--s-8) var(--s-6) var(--s-10);
+  }
+}
+
+/* Grouped left navigation with section labels.
+   Structure from Aave Pro, which is dark; this is stone and brass and shares
+   nothing with it but the shape: a persistent rail of grouped links with
+   uppercase group headings, and the content beside it rather than under it.
+   The prompt scopes this pattern to the docs and away from the app, where a
+   rail would compete with the stat strip. */
+.shell {
+  max-width: 1120px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-7);
+}
+
+@media (min-width: 900px) {
+  .shell {
+    grid-template-columns: 208px minmax(0, 1fr);
+    gap: var(--s-9);
+    align-items: start;
+  }
+}
+
+.rail {
+  position: sticky;
+  top: 88px;
+  display: none;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
+@media (min-width: 900px) {
+  .rail {
+    display: flex;
+  }
+}
+
+.railGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.railLabel {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+  margin-bottom: var(--s-2);
+}
+
+.railLink {
+  font-size: 0.9375rem;
+  color: var(--graphite);
+  text-decoration: none;
+  padding: 5px 0;
+  border-left: 2px solid transparent;
+  padding-left: var(--s-3);
+  margin-left: calc(var(--s-3) * -1);
+  transition: color 120ms var(--ease-step);
+}
+
+.railLink:hover {
+  color: var(--ink);
+  border-left-color: var(--brass);
+}
+
+.inner {
+  min-width: 0;
+}
+
+.title {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  margin: var(--s-3) 0 var(--s-4);
+}
+
+.lede {
+  color: var(--graphite);
+  font-size: 1.0625rem;
+  margin: 0 0 var(--s-8);
+}
+
+/* ------------------------------------------------------------------- index */
+
+.index {
+  display: flex;
+  flex-direction: column;
+  border-top: var(--hairline);
+  margin-bottom: var(--s-9);
+}
+
+.indexRow {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 12rem) minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: baseline;
+  padding: var(--s-4) 0;
+  border-bottom: var(--hairline);
+  text-decoration: none;
+}
+
+@media (max-width: 640px) {
+  .indexRow {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+  }
+  .indexBlurb {
+    grid-column: 2;
+  }
+}
+
+.indexNumber {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  color: var(--brass);
+}
+
+.indexTitle {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--ink);
+  letter-spacing: var(--track-display);
+}
+
+.indexBlurb {
+  color: var(--graphite);
+  font-size: 0.875rem;
+}
+
+.indexRow:hover .indexTitle {
+  color: var(--brass);
+}
+
+/* ---------------------------------------------------------------- articles */
+
+.article {
+  padding-top: var(--s-8);
+  margin-top: var(--s-8);
+  border-top: var(--hairline);
+  scroll-margin-top: 88px;
+}
+
+.article:first-of-type {
+  border-top: none;
+  margin-top: 0;
+}
+
+.articleTitle {
+  font-size: 1.625rem;
+  margin: 0 0 var(--s-5);
+}
+
+.h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: var(--track-display);
+  margin: var(--s-6) 0 var(--s-3);
+}
+
+.p {
+  color: var(--graphite);
+  font-size: 1rem;
+  line-height: 1.65;
+  margin: 0 0 var(--s-4);
+}
+
+.ul {
+  margin: 0 0 var(--s-4);
+  padding-left: var(--s-5);
+  color: var(--graphite);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.ul li {
+  margin-bottom: var(--s-2);
+}
+
+.pre {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  line-height: 1.7;
+  color: var(--ink);
+  background: var(--slab);
+  border: var(--hairline);
+  border-radius: var(--r-card);
+  padding: var(--s-4);
+  overflow-x: auto;
+  margin: 0 0 var(--s-4);
+}

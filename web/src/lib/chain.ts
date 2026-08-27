@@ -1,0 +1,383 @@
+"use client";
+
+import { createPublicClient, http, parseAbiItem, type Address } from "viem";
+import { sepolia } from "viem/chains";
+
+import { CUSDT_ABI, DRAW_ABI, POOL_ABI, YIELD_ABI } from "./abi";
+import { ADDRESSES, RPC_FALLBACK } from "./measurements";
+
+/**
+ * Event signatures for log queries.
+ *
+ * Declared with `parseAbiItem` rather than pulled out of the ABI arrays,
+ * because narrowing an array member by name gives viem no type to infer the
+ * log shape from and every `log.args` comes back as `never`.
+ */
+const EV_DRAWN = parseAbiItem(
+  "event Drawn(uint256 indexed drawId, bytes32 lotHandle, bytes32 resolvedLeafHandle, uint64 totalWeight)",
+);
+const EV_LEAF_ASSIGNED = parseAbiItem(
+  "event LeafAssigned(address indexed owner, uint256 indexed leaf)",
+);
+const EV_COMMITTED = parseAbiItem("event Committed(address indexed owner, uint256 indexed leaf)");
+const EV_RELEASED = parseAbiItem("event Released(address indexed owner, uint256 indexed leaf)");
+
+/**
+ * Reads of the deployed shard.
+ *
+ * Everything here is a public read over a public RPC and needs no wallet. The
+ * stat strip, the draw route and the verify route all run on it, and Verify in
+ * particular has to work disconnected: verification is a public act, and
+ * requiring a wallet to perform it would contradict the claim.
+ */
+
+export const publicClient = createPublicClient({
+  chain: sepolia,
+  transport: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ?? RPC_FALLBACK),
+});
+
+export const POOL = ADDRESSES.pool as Address;
+export const DRAW = ADDRESSES.draw as Address;
+export const CUSDT = ADDRESSES.cUSDT as Address;
+export const YIELD = (process.env.NEXT_PUBLIC_YIELD_ADDRESS ?? "") as Address;
+
+export const CONFIGURED = Boolean(ADDRESSES.pool && ADDRESSES.draw && ADDRESSES.cUSDT);
+
+/**
+ * Earliest block worth scanning for this deployment's logs.
+ *
+ * Public RPCs reject an unbounded `fromBlock: 0` range, which is why the
+ * history table came back empty while every direct read on the same page
+ * succeeded. Scanning from the deployment instead keeps the range small and
+ * costs nothing, since nothing before it can contain this contract's events.
+ */
+export const DEPLOY_BLOCK = BigInt(process.env.NEXT_PUBLIC_DEPLOY_BLOCK ?? "11578000");
+
+/** A ciphertext handle that has never been written. */
+export const ZERO_HANDLE = `0x${"0".repeat(64)}` as const;
+
+/**
+ * Truncate a handle for display: 0x7f2a…c091.
+ *
+ * The brand rule: an encrypted value renders as its REAL handle, in IBM Plex
+ * Mono, in --seal. Never asterisks, never a lock icon, never a blurred number.
+ */
+export function truncate(handle: string | null | undefined, size = 4): string {
+  if (!handle || handle === ZERO_HANDLE) return "not set";
+  const hex = handle.startsWith("0x") ? handle.slice(2) : handle;
+  if (hex.length <= size * 2) return `0x${hex}`;
+  return `0x${hex.slice(0, size)}…${hex.slice(-size)}`;
+}
+
+/** cUSDT has 6 decimals, matching USDT. */
+export function formatUnits6(value: bigint): string {
+  const whole = value / 1_000_000n;
+  const frac = (value % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : `${whole}`;
+}
+
+export type ShardState = {
+  depth: number;
+  capacity: number;
+  leafCount: number;
+  activeHeight: number;
+  hour: bigint;
+  pot: bigint;
+  drawCount: bigint;
+  blockNumber: bigint;
+  current: DrawRow | null;
+  rpcOk: boolean;
+};
+
+export type DrawRow = {
+  id: bigint;
+  rootHandle: `0x${string}`;
+  openedAtBlock: bigint;
+  prize: bigint;
+  totalWeight: bigint;
+  walkHeight: number;
+  lotDrawn: boolean;
+  refHour: bigint;
+  resolvedLeaf: `0x${string}`;
+  /** From the Drawn event. The lot is published as a handle, never a value. */
+  lotHandle: `0x${string}` | null;
+  drawnAtBlock: bigint | null;
+};
+
+async function readDraw(id: bigint): Promise<DrawRow> {
+  const [info, resolved] = await Promise.all([
+    publicClient.readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawInfo", args: [id] }),
+    publicClient.readContract({
+      address: DRAW,
+      abi: DRAW_ABI,
+      functionName: "resolvedLeafHandle",
+      args: [id],
+    }),
+  ]);
+  const [rootHandle, openedAtBlock, prize, totalWeight, walkHeight, lotDrawn, refHour] =
+    info as readonly [`0x${string}`, bigint, bigint, bigint, number, boolean, bigint];
+  return {
+    id,
+    rootHandle,
+    openedAtBlock,
+    prize,
+    totalWeight,
+    walkHeight,
+    lotDrawn,
+    refHour,
+    resolvedLeaf: resolved as `0x${string}`,
+    lotHandle: null,
+    drawnAtBlock: null,
+  };
+}
+
+/**
+ * The Drawn events, keyed by draw id.
+ *
+ * The lot and the resolved leaf are published as HANDLES. Publishing them is
+ * what makes the walk auditable, and it costs nothing because they decrypt for
+ * nobody without a grant, and no grant is issued for either.
+ */
+async function readDrawnEvents(): Promise<Map<string, { lot: `0x${string}`; block: bigint }>> {
+  const out = new Map<string, { lot: `0x${string}`; block: bigint }>();
+  try {
+    const logs = await publicClient.getLogs({
+      address: DRAW,
+      event: EV_DRAWN,
+      fromBlock: DEPLOY_BLOCK,
+      toBlock: "latest",
+    });
+    for (const log of logs) {
+      if (log.args.drawId !== undefined && log.args.lotHandle !== undefined) {
+        out.set(log.args.drawId.toString(), { lot: log.args.lotHandle, block: log.blockNumber! });
+      }
+    }
+  } catch {
+    // A node that will not serve a full log range is not a reason to fail the
+    // whole page. The handles are supplementary; drawInfo carries the rest.
+  }
+  return out;
+}
+
+/** Everything the stat strip shows, in one round of reads. */
+export async function readShardState(): Promise<ShardState> {
+  const [depth, capacity, leafCount, activeHeight, hour, drawCount, blockNumber] = await Promise.all([
+    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "DEPTH" }),
+    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "capacity" }),
+    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "leafCount" }),
+    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "activeHeight" }),
+    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "timeUnitsNow" }),
+    publicClient.readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawCount" }),
+    publicClient.getBlockNumber(),
+  ]);
+
+  const count = drawCount as bigint;
+  let current = count > 0n ? await readDraw(count) : null;
+  if (current) {
+    const drawn = (await readDrawnEvents()).get(current.id.toString());
+    if (drawn) current = { ...current, lotHandle: drawn.lot, drawnAtBlock: drawn.block };
+  }
+
+  // The pot is what the draw contract already holds plus what has accrued but
+  // not been harvested. Both are public: the prize size is not a secret, only
+  // who wins it.
+  let pending = 0n;
+  if (YIELD) {
+    try {
+      pending = (await publicClient.readContract({
+        address: YIELD,
+        abi: YIELD_ABI,
+        functionName: "pending",
+      })) as bigint;
+    } catch {
+      pending = 0n;
+    }
+  }
+
+  return {
+    depth: Number(depth),
+    capacity: Number(capacity),
+    leafCount: Number(leafCount),
+    activeHeight: Number(activeHeight),
+    hour: hour as bigint,
+    pot: (current?.prize ?? 0n) + pending,
+    drawCount: count,
+    blockNumber,
+    current,
+    rpcOk: true,
+  };
+}
+
+/** Every draw, newest first. Small numbers, so read them all. */
+export async function readDrawHistory(count: bigint): Promise<DrawRow[]> {
+  const ids: bigint[] = [];
+  for (let i = count; i > 0n; i--) ids.push(i);
+  const [rows, drawn] = await Promise.all([Promise.all(ids.map(readDraw)), readDrawnEvents()]);
+  return rows.map((row) => {
+    const event = drawn.get(row.id.toString());
+    return event ? { ...row, lotHandle: event.lot, drawnAtBlock: event.block } : row;
+  });
+}
+
+/**
+ * The register's slots, as real ciphertext handles.
+ *
+ * Leaf ownership is public: `_update` writes a visible path of storage slots,
+ * so which leaf moved is on chain whatever the frontend does. `LeafAssigned`
+ * is the index of that, and `stakeOf` gives each owner's balance handle. The
+ * handles decrypt for nobody without a grant, which is exactly why publishing
+ * them costs nothing and makes the register auditable.
+ */
+export async function readSlotHandles(capacity: number): Promise<(`0x${string}` | null)[]> {
+  const slots: (`0x${string}` | null)[] = Array.from({ length: capacity }, () => null);
+
+  const logs = await publicClient.getLogs({
+    address: POOL,
+    event: EV_LEAF_ASSIGNED,
+    fromBlock: DEPLOY_BLOCK,
+    toBlock: "latest",
+  });
+
+  const owners = new Map<number, Address>();
+  for (const log of logs) {
+    if (log.args.owner !== undefined && log.args.leaf !== undefined) {
+      owners.set(Number(log.args.leaf), log.args.owner);
+    }
+  }
+
+  await Promise.all(
+    [...owners.entries()].map(async ([leaf, owner]) => {
+      if (leaf >= capacity) return;
+      try {
+        const handle = (await publicClient.readContract({
+          address: POOL,
+          abi: POOL_ABI,
+          functionName: "stakeOf",
+          args: [owner],
+        })) as `0x${string}`;
+        slots[leaf] = handle === ZERO_HANDLE ? null : handle;
+      } catch {
+        slots[leaf] = null;
+      }
+    }),
+  );
+
+  return slots;
+}
+
+export type Position = {
+  hasLeaf: boolean;
+  leaf: number | null;
+  stakeHandle: `0x${string}`;
+  weightHandle: `0x${string}`;
+  lastChange: number;
+  walletHandle: `0x${string}`;
+  isOperator: boolean;
+};
+
+export async function readPosition(account: Address): Promise<Position> {
+  const [hasLeaf, stakeHandle, weightHandle, lastChange, walletHandle, isOperator] =
+    await Promise.all([
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "hasLeaf",
+        args: [account],
+      }),
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "stakeOf",
+        args: [account],
+      }),
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "interceptOf",
+        args: [account],
+      }),
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "lastChangeOf",
+        args: [account],
+      }),
+      publicClient.readContract({
+        address: CUSDT,
+        abi: CUSDT_ABI,
+        functionName: "confidentialBalanceOf",
+        args: [account],
+      }),
+      publicClient.readContract({
+        address: CUSDT,
+        abi: CUSDT_ABI,
+        functionName: "isOperator",
+        args: [account, POOL],
+      }),
+    ]);
+
+  let leaf: number | null = null;
+  if (hasLeaf as boolean) {
+    leaf = Number(
+      await publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "leafOf",
+        args: [account],
+      }),
+    );
+  }
+
+  return {
+    hasLeaf: hasLeaf as boolean,
+    leaf,
+    stakeHandle: stakeHandle as `0x${string}`,
+    weightHandle: weightHandle as `0x${string}`,
+    lastChange: Number(lastChange),
+    walletHandle: walletHandle as `0x${string}`,
+    isOperator: isOperator as boolean,
+  };
+}
+
+export type ActivityRow = {
+  kind: "Committed" | "Released";
+  block: bigint;
+  tx: `0x${string}`;
+  leaf: bigint;
+};
+
+export async function readActivity(account: Address): Promise<ActivityRow[]> {
+  const [committed, released] = await Promise.all([
+    publicClient.getLogs({
+      address: POOL,
+      event: EV_COMMITTED,
+      args: { owner: account },
+      fromBlock: DEPLOY_BLOCK,
+      toBlock: "latest",
+    }),
+    publicClient.getLogs({
+      address: POOL,
+      event: EV_RELEASED,
+      args: { owner: account },
+      fromBlock: DEPLOY_BLOCK,
+      toBlock: "latest",
+    }),
+  ]);
+
+  const rows: ActivityRow[] = [
+    ...committed.map((l) => ({
+      kind: "Committed" as const,
+      block: l.blockNumber!,
+      tx: l.transactionHash!,
+      leaf: l.args.leaf ?? 0n,
+    })),
+    ...released.map((l) => ({
+      kind: "Released" as const,
+      block: l.blockNumber!,
+      tx: l.transactionHash!,
+      leaf: l.args.leaf ?? 0n,
+    })),
+  ];
+
+  return rows.sort((a, b) => Number(b.block - a.block));
+}

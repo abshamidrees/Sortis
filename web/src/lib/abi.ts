@@ -1,13 +1,137 @@
 /**
- * The slices of the contract ABIs the frontend actually calls.
+ * The slices of the contract ABIs the frontend calls.
  *
  * Hand-written rather than imported from the Hardhat artifacts, because the
  * artifacts live outside the Next app's module graph and importing across that
- * boundary drags the whole build system into the web bundle. These are the six
- * reads Verify needs and nothing else.
+ * boundary drags the whole build system into the web bundle.
  */
 
+export const POOL_ABI = [
+  {
+    type: "function",
+    name: "capacity",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "leafCount",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "leafHighWater",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "activeHeight",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint8" }],
+  },
+  { type: "function", name: "DEPTH", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+  {
+    type: "function",
+    name: "timeUnitsNow",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "hasLeaf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "leafOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "stakeOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "interceptOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "lastChangeOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "uint48" }],
+  },
+  {
+    type: "function",
+    name: "commit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amount", type: "bytes32" },
+      { name: "inputProof", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "release",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amount", type: "bytes32" },
+      { name: "inputProof", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "event",
+    name: "LeafAssigned",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "leaf", type: "uint256", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "Committed",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "leaf", type: "uint256", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "Released",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "leaf", type: "uint256", indexed: true },
+    ],
+  },
+] as const;
+
 export const DRAW_ABI = [
+  {
+    type: "function",
+    name: "drawCount",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
   {
     type: "function",
     name: "drawInfo",
@@ -28,14 +152,24 @@ export const DRAW_ABI = [
     name: "resolvedLeafHandle",
     stateMutability: "view",
     inputs: [{ name: "drawId", type: "uint256" }],
-    outputs: [{ name: "", type: "bytes32" }],
+    outputs: [{ type: "bytes32" }],
   },
   {
     type: "function",
-    name: "drawCount",
+    name: "hasClaimed",
     stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
+    inputs: [
+      { name: "drawId", type: "uint256" },
+      { name: "claimant", type: "address" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "claimPrize",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "drawId", type: "uint256" }],
+    outputs: [],
   },
   {
     type: "event",
@@ -57,28 +191,63 @@ export const DRAW_ABI = [
       { name: "totalWeight", type: "uint64", indexed: false },
     ],
   },
+  {
+    type: "event",
+    name: "PrizeClaimed",
+    inputs: [
+      { name: "drawId", type: "uint256", indexed: true },
+      { name: "claimant", type: "address", indexed: true },
+    ],
+  },
 ] as const;
 
-export const POOL_ABI = [
+export const CUSDT_ABI = [
   {
     type: "function",
-    name: "activeHeight",
+    name: "confidentialBalanceOf",
     stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint8" }],
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "bytes32" }],
   },
   {
     type: "function",
-    name: "leafCount",
+    name: "isOperator",
     stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
+    inputs: [
+      { name: "holder", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ type: "bool" }],
   },
   {
     type: "function",
-    name: "capacity",
+    name: "setOperator",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "operator", type: "address" },
+      { name: "until", type: "uint48" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "mint",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint64" },
+    ],
+    outputs: [{ type: "bytes32" }],
+  },
+  { type: "function", name: "decimals", stateMutability: "pure", inputs: [], outputs: [{ type: "uint8" }] },
+] as const;
+
+export const YIELD_ABI = [
+  {
+    type: "function",
+    name: "pending",
     stateMutability: "view",
     inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
+    outputs: [{ type: "uint64" }],
   },
 ] as const;

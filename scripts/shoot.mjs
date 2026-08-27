@@ -24,8 +24,12 @@ const SHOTS = [
   { name: "landing-hero", path: "/", width: 1440, height: 900, full: false },
   { name: "landing-desktop", path: "/", width: 1440, height: 900, full: true },
   { name: "landing-mobile", path: "/", width: 390, height: 844, full: true },
-  { name: "app-draw", path: "/app/draw", width: 1440, height: 900, full: false },
-  { name: "app-verify", path: "/app/verify", width: 1440, height: 900, full: false },
+  { name: "app-draw", path: "/app", width: 1440, height: 900, full: false },
+  { name: "app-draw-mobile", path: "/app", width: 390, height: 844, full: false },
+  { name: "app-register", path: "/app/register", width: 1440, height: 900, full: false },
+  { name: "app-register-mobile", path: "/app/register", width: 390, height: 844, full: false },
+  { name: "app-verify", path: "/app/verify?draw=1", width: 1440, height: 900, full: false },
+  { name: "app-verify-mobile", path: "/app/verify?draw=1", width: 390, height: 844, full: false },
   { name: "docs", path: "/docs", width: 1440, height: 900, full: false },
 ];
 
@@ -81,7 +85,7 @@ async function main() {
 
       // Let the draw column finish its sixteen beats before capturing, so the
       // shot shows the resolved state rather than a random frame mid-descent.
-      await page.waitForTimeout(reduced ? 400 : 2400);
+      await page.waitForTimeout(reduced ? 600 : 4000);
 
       const file = join(OUT, `${shot.name}${reduced ? "-reduced" : ""}.png`);
       await page.screenshot({ path: file, fullPage: shot.full });

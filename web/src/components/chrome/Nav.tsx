@@ -86,7 +86,9 @@ export function Nav({ surface }: { surface: "marketing" | "app" }) {
 
           <div className={styles.right}>
             {surface === "app" ? (
-              <WalletButton />
+              <span className={styles.walletSlot}>
+                <WalletButton />
+              </span>
             ) : (
               <>
                 <a className={styles.repo} href={REPO_URL}>

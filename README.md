@@ -7,6 +7,64 @@ position is visible to anyone.
 Built for the Zama Developer Program, Mainnet Season 4. See [docs/BRIEF.md](docs/BRIEF.md)
 for the full design.
 
+## For judges
+
+**Live app:** not yet published. Deploy with `vercel --prod` from `web/` and put
+the URL here. Everything below works against the Sepolia deployment already
+listed under [Sepolia](#sepolia), from any browser with a wallet.
+
+Sepolia ETH is the only thing you need to bring. The pool's test token has an
+open faucet in the app.
+
+### Trying every feature, in order
+
+1. Open `/app/register` and connect a wallet on Sepolia.
+2. Press **Mint 5 cUSDT**. This mints the pool's ERC-7984 test token to you and
+   authorises the pool as an ERC-7984 operator in the same step, because a
+   commit fails without that authorisation and a judge should never hit that
+   for a reason the UI never mentioned.
+3. Enter an amount and press **Commit**. The amount is encrypted in your
+   browser by the relayer SDK, sent as a ciphertext handle with an input proof,
+   and pulled with `confidentialTransferFrom`. Nothing readable leaves your
+   machine.
+4. Press **decrypt** next to STAKE. Your wallet signs an EIP-712 grant scoped to
+   the pool and a one-day window, and the relayer returns the plaintext to this
+   browser only. That is the user-decryption flow.
+5. Wait for the stake to cross an hour boundary, then open `/app` to see the
+   register, the current draw and the history.
+6. Press **Release** to withdraw. Principal is withdrawable at any time. Try an
+   amount larger than your stake: the transaction succeeds, moves nothing, and
+   costs the same gas as one that does, because reverting on an encrypted
+   comparison would leak the balance.
+7. Open `/app/verify` and verify a draw. This works with no wallet connected.
+
+### Triggering a draw
+
+Draws are operator-triggered on Sepolia, and the flow is two transactions on
+purpose. From a clone with `PRIVATE_KEY` set to the deployer:
+
+```bash
+npx hardhat run scripts/live.ts --network sepolia
+```
+
+That runs a full commit, hold, release, over-release, `openDraw`, `drawLot` and
+`claimPrize` against the live contracts and prints every gas figure. It takes
+about ninety minutes end to end, most of it the hour the stake has to sit to
+carry weight. `LIVE_SKIP_COMMIT=1 LIVE_HOLD_SECONDS=0` resumes from the release
+if a stake already exists.
+
+### The yield source is a mock, and here is exactly how
+
+`MockYieldAdapter` has an admin-callable `accrue(uint64)` that books a prize,
+and `harvest(address)` mints that much cUSDT into the draw contract and resets.
+That is the whole of it. Sepolia has no real yield and building a convincing
+fake one would cost days and prove nothing about the part of this that is hard.
+
+The mainnet path is the same `ISortisYieldAdapter` interface in front of an
+ERC-4626 vault. `SortisDraw` only ever calls `harvest(address)` and only ever
+treats the result as a public `uint64`, so swapping the adapter is a
+constructor argument and no contract change.
+
 ## The thesis, in one paragraph
 
 Every other entry will encrypt balances and scan them, which reverts at 30

@@ -117,9 +117,24 @@
 .right {
   display: flex;
   align-items: center;
-  gap: var(--s-4);
+  gap: var(--s-3);
   margin-left: auto;
-  flex: none;
+  /* Must be able to shrink. The wallet button is rendered by RainbowKit and
+     sizes itself, and on a 390px screen it was wide enough to push the menu
+     control off the edge entirely. */
+  min-width: 0;
+}
+
+/* The menu control comes first on small screens so it can never be the thing
+   that gets pushed out. */
+.right > .burger {
+  order: -1;
+}
+
+.walletSlot {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
 }
 
 .repo {

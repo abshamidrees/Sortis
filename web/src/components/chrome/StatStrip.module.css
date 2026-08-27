@@ -1,0 +1,123 @@
+/* Stat strip. 56px, full width, directly under the nav, on every app route. */
+
+.strip {
+  position: sticky;
+  top: 64px;
+  z-index: 40;
+  height: 56px;
+  background: var(--slab);
+  border-top: var(--hairline);
+  border-bottom: var(--hairline);
+}
+
+.scroll {
+  height: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Below 768px the row scrolls sideways with a right-edge fade rather than
+     wrapping. Wrapping would break the one-glance reading it exists for. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent 100%);
+}
+
+@media (min-width: 1180px) {
+  .scroll {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+.scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.cell {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 var(--s-5);
+  border-right: 1px solid var(--rule);
+  min-width: 0;
+}
+
+.cell:first-child {
+  padding-left: var(--s-5);
+}
+
+.cell:last-child {
+  border-right: none;
+}
+
+@media (min-width: 900px) {
+  .cell:first-child {
+    padding-left: var(--s-6);
+  }
+}
+
+.label {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+  white-space: nowrap;
+}
+
+.value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.value[data-tone="brass"] {
+  color: var(--brass);
+}
+
+.value[data-tone="fault"] {
+  color: var(--fault);
+}
+
+.value[data-tone="seal"] {
+  color: var(--seal);
+}
+
+/* The budget, made ambient. The shard sits at 89.52% of the sequential depth
+   limit and this is the one place that fact is shown rather than argued. */
+.bar {
+  position: absolute;
+  left: var(--s-5);
+  right: var(--s-5);
+  bottom: 8px;
+  height: 2px;
+  background: var(--rule);
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  background: var(--brass);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brass);
+  flex: none;
+}
+
+.dot[data-state="fail"] {
+  background: var(--fault);
+}
