@@ -56,7 +56,7 @@ encrypted. `SortisRegister._walk` resolves this with an oblivious read: at level
 k the descent could be on any of 2^k nodes, so it loads every candidate and
 folds them with the branch bits already decided.
 
-That is correct and never branches on a ciphertext, but it is Ω(N) — and not
+That is correct and never branches on a ciphertext, but it is Ω(N), and not
 because of how it is written. A computation that hides which leaf it chose must
 touch every leaf it could have chosen.
 
@@ -69,8 +69,8 @@ touch every leaf it could have chosen.
 
 Depth is comfortable everywhere. The **global** budget is what binds, and it
 caps a single-transaction winner-hiding draw at roughly 2^8 = 256 stakes. The
-reverts are `HCUTransactionLimitExceeded`, never `HCUTransactionDepthLimitExceeded`
-— a distinction the test asserts, because too much work is splittable across
+reverts are `HCUTransactionLimitExceeded`, never `HCUTransactionDepthLimitExceeded`.
+The test asserts that distinction, because too much work is splittable across
 checkpointed transactions and a chain that is too long is not.
 
 ## Contracts
@@ -93,15 +93,15 @@ it is at or above X, so an attacker binary-searches any balance in about 64
 transactions. `SortisPool.release` uses `FHESafeMath.tryDecrease`, which returns
 an encrypted success flag and leaves the balance untouched on failure. A refused
 release transfers zero, writes back the same balance, emits the same event, and
-matches an honoured one on gas, HCU depth and global HCU — all asserted in
-`test/Pool.t.ts`.
+matches an honoured one on gas, HCU depth and global HCU. All of it is asserted
+in `test/Pool.t.ts`.
 
 ### The draw is two transactions, and the order is the argument
 
 `openDraw` commits the register root and the block. At that moment no randomness
 exists anywhere. `drawLot` produces the lot in a **later** block with
 `FHE.randEuint64`, and refuses to run in the opening block. It also refuses if
-the root handle changed in between — handles are content-derived, so a single
+the root handle changed in between. Handles are content-derived, so a single
 commit or release anywhere in the pool voids the draw. That turns "the operator
 promised not to reshape the tree" into something the contract checks.
 
@@ -111,7 +111,7 @@ and `FHE.randEuint64(bound)` reverts with `NotPowerOfTwo` unless the bound is a
 power of two. So the total weight has to be public. `openDraw` marks the
 committed root publicly decryptable; `drawLot` takes the KMS cleartext plus its
 proof, verifies with `FHE.checkSignatures`, and decodes the total **from the
-bytes it verified** — an operator who forges the denominator fails verification.
+bytes it verified**, so an operator who forges the denominator fails verification.
 Fetching that proof is an off-chain read, so the flow stays at two transactions.
 
 ### The prize is claimed, not pushed
@@ -131,8 +131,8 @@ at the only moment a plaintext address exists: when someone shows up holding
 one. Each claimant compares their own leaf against the encrypted resolved leaf,
 selects the prize or zero on the encrypted result, and confidentially transfers
 that. Losers transfer an encrypted zero. Gas, HCU depth and global HCU are
-identical across claims — asserted in `test/Draw.t.ts` — so an observer learns
-who tried and nothing else.
+identical across claims, asserted in `test/Draw.t.ts`, so an observer learns who
+tried and nothing else.
 
 ### The walk descends only the occupied subtree
 
@@ -169,7 +169,7 @@ npm run deploy:sepolia
 npm run cycle:sepolia
 ```
 
-Then a full prize round — open, wait a block, draw, claim:
+Then a full prize round. Open, wait a block, draw, claim:
 
 ```bash
 npm run draw:sepolia
@@ -187,6 +187,6 @@ Not yet built: the three frontends.
 
 The TWAB has a known gap documented at the top of [`SortisTwab.sol`](contracts/SortisTwab.sol):
 weight accrues only when a balance changes, so a stake that is committed and left
-alone carries stale weight. The fix — keeping an intercept and a slope per
-register node so any subtree's exact weight at time T is one scalar multiply —
+alone carries stale weight. The fix is to keep an intercept and a slope per
+register node, so any subtree's exact weight at time T is one scalar multiply. It
 is described there and deliberately deferred until the draw is being wired up.

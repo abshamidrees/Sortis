@@ -1,0 +1,355 @@
+/* Shared section primitives for the landing page.
+   Structure borrowed from fd: light ground, one accent used sparingly, a 4px
+   grid, solid colour everywhere, borders rather than fills for separation.
+   Palette and type are Sortis. No shadows: section 6 of the brief says no
+   gradients, no glass, no glow, and spend the boldness on the column. */
+
+.section {
+  border-top: var(--hairline);
+}
+
+.inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--s-9) var(--s-5);
+}
+
+@media (min-width: 900px) {
+  .inner {
+    padding: var(--s-10) var(--s-6);
+  }
+}
+
+/* Section head. Eyebrow, heading, one line of standfirst. */
+
+.head {
+  max-width: 62ch;
+  margin-bottom: var(--s-8);
+}
+
+.number {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  color: var(--brass);
+  margin-bottom: var(--s-3);
+  display: block;
+}
+
+.title {
+  font-size: clamp(1.75rem, 3.4vw, 2.5rem);
+  margin: var(--s-3) 0 var(--s-4);
+}
+
+.standfirst {
+  color: var(--graphite);
+  font-size: 1.0625rem;
+  margin: 0;
+  max-width: 58ch;
+}
+
+/* Two-up grid used by the wall and the privacy table. */
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-6);
+}
+
+@media (min-width: 800px) {
+  .pair {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-7);
+  }
+}
+
+/* A bordered panel. Hairline, small radius, flat. */
+
+.panel {
+  border: var(--hairline);
+  border-radius: var(--r-card);
+  background: var(--slab);
+  padding: var(--s-5);
+}
+
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+  padding-bottom: var(--s-3);
+  border-bottom: var(--hairline);
+}
+
+.panelTitle {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: var(--track-display);
+}
+
+.panelVerdict {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+}
+
+.panelVerdict[data-tone="fault"] {
+  color: var(--fault);
+}
+
+.panelVerdict[data-tone="brass"] {
+  color: var(--brass);
+}
+
+/* A row of label/value, hairline separated. No zebra striping. */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-3) 0;
+  border-bottom: var(--hairline);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.rowLabel {
+  color: var(--graphite);
+  font-size: 0.875rem;
+}
+
+.rowValue {
+  font-family: var(--font-data);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.rowValue[data-tone="fault"] {
+  color: var(--fault);
+}
+
+.rowValue[data-tone="brass"] {
+  color: var(--brass);
+}
+
+.rowValue[data-tone="seal"] {
+  color: var(--seal);
+}
+
+/* Provenance line. Every number on the site has to be traceable, so the
+   commit that produced it is printed next to it. */
+.provenance {
+  margin-top: var(--s-5);
+  padding-top: var(--s-3);
+  border-top: var(--hairline);
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  color: var(--graphite);
+}
+
+.provenance a {
+  color: var(--graphite);
+}
+
+/* Numbered steps. The order is real, so the markers are too. */
+
+.steps {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-5);
+  counter-reset: step;
+}
+
+@media (min-width: 720px) {
+  .steps {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--s-6);
+  }
+}
+
+@media (min-width: 1040px) {
+  .steps {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.step {
+  border-top: 2px solid var(--rule);
+  padding-top: var(--s-4);
+}
+
+.step[data-current="true"] {
+  border-top-color: var(--brass);
+}
+
+.stepNumber {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  color: var(--brass);
+  display: block;
+  margin-bottom: var(--s-3);
+}
+
+.stepTitle {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.0625rem;
+  letter-spacing: var(--track-display);
+  margin: 0 0 var(--s-2);
+}
+
+.stepBody {
+  color: var(--graphite);
+  font-size: 0.9375rem;
+  margin: 0 0 var(--s-3);
+}
+
+.stepMeta {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  color: var(--seal);
+}
+
+/* Chart.
+   The SVG carries labelled axes and two annotated curves, which stop being
+   readable much below 560px. Rather than shrink the type into illegibility,
+   the chart keeps its minimum width and scrolls inside its own container. The
+   page body never scrolls sideways. */
+
+.chartScroll {
+  overflow-x: auto;
+  margin: 0 calc(var(--s-5) * -1);
+  padding: 0 var(--s-5);
+}
+
+@media (min-width: 900px) {
+  .chartScroll {
+    margin: 0;
+    padding: 0;
+  }
+}
+
+.chart {
+  width: 100%;
+  min-width: 560px;
+  height: auto;
+  display: block;
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5);
+  margin-top: var(--s-4);
+  font-size: 0.8125rem;
+  color: var(--graphite);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.legendSwatch {
+  width: 14px;
+  height: 2px;
+  flex: none;
+}
+
+/* Footer */
+
+.footer {
+  border-top: var(--hairline);
+  background: var(--slab);
+}
+
+.footerGrid {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--s-8) var(--s-5);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-6);
+}
+
+@media (min-width: 800px) {
+  .footerGrid {
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: var(--s-7);
+    padding: var(--s-8) var(--s-6);
+  }
+}
+
+.footerHeading {
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+  margin: 0 0 var(--s-4);
+}
+
+.footerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.footerList a {
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.9375rem;
+}
+
+.footerList a:hover {
+  color: var(--brass);
+}
+
+.footerAddress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.footerAddressLabel {
+  font-size: 0.75rem;
+  color: var(--graphite);
+}
+
+.footerNote {
+  color: var(--graphite);
+  font-size: 0.875rem;
+  margin: 0;
+  max-width: 40ch;
+}
+
+.footerTag {
+  font-family: var(--font-data);
+  font-size: 0.6875rem;
+  color: var(--graphite);
+  border-top: var(--hairline);
+  padding: var(--s-4) var(--s-5);
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+@media (min-width: 800px) {
+  .footerTag {
+    padding: var(--s-4) var(--s-6);
+  }
+}

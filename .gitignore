@@ -33,3 +33,6 @@ fd-design/
 osero-design/
 pro-design/
 t54-design/
+
+# Screenshot output from scripts/shoot.mjs
+shots/

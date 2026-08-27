@@ -189,7 +189,11 @@ export function DrawColumn({
   /** Candidates left in the real register: 2^levels halved once per beat. */
   const candidatesRemaining = beat < 0 ? 2 ** levels : 2 ** Math.max(0, levels - 1 - beat);
 
-  const tokenY = beat < 0 ? 0 : Math.min(beat, VISIBLE_SLOTS - 1);
+  // While the walk runs, the token tracks the level it is on. When the walk
+  // resolves it settles onto the drawn slot. A token that finished at the
+  // bottom of the channel while the brass slot sat higher up would read as
+  // two unrelated things happening rather than one descent landing.
+  const tokenY = resolved ? winner : beat < 0 ? 0 : Math.min(beat, VISIBLE_SLOTS - 1);
 
   return (
     <div className={className}>

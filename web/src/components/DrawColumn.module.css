@@ -110,12 +110,14 @@
     opacity var(--beat) var(--ease-step);
 }
 
-/* Eliminated. Dimmed out of the search, not hidden -- the viewer should still
-   see that the row exists and simply is not the answer. */
+/* Eliminated. Out of the search but not hidden, and still encrypted: the handle keeps its
+   --seal colour rather than going grey, because the register does not stop
+   being confidential just because a branch was discarded. Encryption is the
+   resting state of this product and the column has to look like it. */
 .slot[data-state="eliminated"] {
-  color: var(--graphite);
+  color: var(--seal);
   background: transparent;
-  opacity: 0.28;
+  opacity: 0.3;
 }
 
 /* Drawn. The one slot that survives sixteen halvings. */
