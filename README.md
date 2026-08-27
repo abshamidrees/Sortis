@@ -9,9 +9,10 @@ for the full design.
 
 ## For judges
 
-**Live app:** not yet published. Deploy with `vercel --prod` from `web/` and put
-the URL here. Everything below works against the Sepolia deployment already
-listed under [Sepolia](#sepolia), from any browser with a wallet.
+**Live app:** not yet published. See [Deploying the frontend](#deploying-the-frontend)
+below, then put the URL here. Everything else works against the Sepolia
+deployment already listed under [Sepolia](#sepolia), from any browser with a
+wallet.
 
 Sepolia ETH is the only thing you need to bring. The pool's test token has an
 open faucet in the app.
@@ -64,6 +65,44 @@ The mainnet path is the same `ISortisYieldAdapter` interface in front of an
 ERC-4626 vault. `SortisDraw` only ever calls `harvest(address)` and only ever
 treats the result as a public `uint64`, so swapping the adapter is a
 constructor argument and no contract change.
+
+## Deploying the frontend
+
+The Next app lives in `web/`, and the repository root is the Hardhat project.
+A Vercel build pointed at the root fails with `No Next.js version detected`,
+because the root `package.json` has no `next` in it and should not.
+
+`vercel.json` at the root fixes this by building from `web/` explicitly. If you
+would rather use the dashboard, set **Root Directory** to `web` in project
+settings, which makes `web/vercel.json` the one that applies. Either works;
+both are committed so it does not matter which you pick.
+
+### Environment variables
+
+Set these on the Vercel project, for Production and Preview. Without them the
+footer reads "Not deployed", the stat strip has nothing to show, and Verify has
+no contract to read. None of them are secret.
+
+```
+NEXT_PUBLIC_POOL_ADDRESS    0xa57F6D5FC7780cbE5324EeC26d5a6BA88D22AeBa
+NEXT_PUBLIC_DRAW_ADDRESS    0xBB39Fd2c061A138940dfC3aC182B5847d163EC57
+NEXT_PUBLIC_CUSDT_ADDRESS   0x0ADfC89408f91aA3da2bac550Da87E1c6d08e989
+NEXT_PUBLIC_YIELD_ADDRESS   0xBeb04ad88B411661D15742dbE1a659a6CEbB96Ae
+NEXT_PUBLIC_DEPLOY_BLOCK    11578000
+```
+
+Two more are optional. `NEXT_PUBLIC_SEPOLIA_RPC_URL` replaces the public
+fallback, which is rate limited and will be the first thing to break under a
+judge's traffic. `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` adds WalletConnect to
+the wallet list; without it the app offers injected wallets only, which is
+deliberate rather than a gap. RainbowKit initialises WalletConnect on page load
+whether or not anyone uses it, and with a placeholder id that means a 403 and a
+400 in the console of every visitor.
+
+`NEXT_PUBLIC_DEPLOY_BLOCK` is the earliest block worth scanning for this
+deployment's logs. Public RPCs reject an unbounded `fromBlock: 0` range, which
+is what made the draw history render empty while every direct read on the same
+page succeeded. Update it if you redeploy the contracts.
 
 ## The thesis, in one paragraph
 
