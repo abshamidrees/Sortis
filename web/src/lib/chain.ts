@@ -89,6 +89,22 @@ export type ShardState = {
   rpcOk: boolean;
 };
 
+/**
+ * The four states a draw can be in, derived from ONE source.
+ *
+ *   open     root committed, no lot yet
+ *   drawn    lot exists and a leaf is resolved
+ *   claimed  a claimPrize has landed for this draw
+ *   void     the register moved since the snapshot, so it can never settle
+ *
+ * Derived from contract state, never from log presence. The app previously
+ * showed a badge reading "drawn" beside a lot handle reading "not drawn"
+ * beside a populated resolved handle, because the badge came from state and
+ * the handle came from an event the RPC had failed to serve. Those three
+ * cannot disagree if they all come from the same place.
+ */
+export type DrawStatus = "open" | "drawn" | "claimed" | "void";
+
 export type DrawRow = {
   id: bigint;
   rootHandle: `0x${string}`;
@@ -99,7 +115,14 @@ export type DrawRow = {
   lotDrawn: boolean;
   refHour: bigint;
   resolvedLeaf: `0x${string}`;
-  /** From the Drawn event. The lot is published as a handle, never a value. */
+  status: DrawStatus;
+  /**
+   * From the Drawn event, when the RPC serves it.
+   *
+   * NULL MEANS UNKNOWN, NOT ABSENT. `lotDrawn` is the authority on whether a
+   * lot exists; this is only the handle's value. Rendering null as "not drawn"
+   * is what produced the contradiction this type exists to prevent.
+   */
   lotHandle: `0x${string}` | null;
   drawnAtBlock: bigint | null;
 };
@@ -126,6 +149,7 @@ async function readDraw(id: bigint): Promise<DrawRow> {
     lotDrawn,
     refHour,
     resolvedLeaf: resolved as `0x${string}`,
+    status: lotDrawn ? "drawn" : "open",
     lotHandle: null,
     drawnAtBlock: null,
   };
@@ -174,6 +198,8 @@ export async function readShardState(): Promise<ShardState> {
   const count = drawCount as bigint;
   let current = count > 0n ? await readDraw(count) : null;
   if (current) {
+    // Enrichment only. If the log is unavailable the draw keeps the status its
+    // own state gave it.
     const drawn = (await readDrawnEvents()).get(current.id.toString());
     if (drawn) current = { ...current, lotHandle: drawn.lot, drawnAtBlock: drawn.block };
   }

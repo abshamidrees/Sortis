@@ -27,8 +27,18 @@ import shell from "@/components/chrome/AppShell.module.css";
 
 type Filter = "all" | "drawn" | "claimed";
 
-function statusOf(row: DrawRow): "open" | "drawn" {
-  return row.lotDrawn ? "drawn" : "open";
+/**
+ * How a lot handle reads.
+ *
+ * Three distinct cases, and collapsing the last two is what put "not drawn"
+ * next to a badge reading "drawn": a lot that does not exist yet, a lot that
+ * exists and whose handle the RPC would not serve, and a lot whose handle we
+ * have. Only the first is "not drawn".
+ */
+function lotHandleText(row: DrawRow): string {
+  if (!row.lotDrawn) return "not drawn";
+  if (!row.lotHandle) return "drawn, handle unavailable from this RPC";
+  return truncate(row.lotHandle);
 }
 
 export function DrawScreen() {
@@ -124,8 +134,8 @@ export function DrawScreen() {
           <section className={shell.panel}>
             <div className={shell.panelHead}>
               <span className={shell.panelLabel}>Current draw</span>
-              <span className={shell.panelMeta} data-status={current ? statusOf(current) : "none"}>
-                {current ? statusOf(current) : "none yet"}
+              <span className={shell.panelMeta} data-status={current?.status ?? "none"}>
+                {current?.status ?? "none yet"}
               </span>
             </div>
             <div className={shell.panelBody}>
@@ -147,7 +157,7 @@ export function DrawScreen() {
                     {current.lotHandle ? (
                       <span className="ciphertext">{truncate(current.lotHandle)}</span>
                     ) : (
-                      "not drawn"
+                      lotHandleText(current)
                     )}
                   </span>
 
@@ -163,6 +173,9 @@ export function DrawScreen() {
 
                   <span className={shell.kvKey}>Walk height</span>
                   <span className={shell.kvValue}>{current.walkHeight}</span>
+
+                  <span className={shell.kvKey}>Status</span>
+                  <span className={shell.kvValue}>{current.status}</span>
                 </div>
               ) : (
                 <p className={shell.note}>

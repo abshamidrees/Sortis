@@ -111,10 +111,19 @@ function VerifyBody() {
             pass: true,
           },
           {
+            // The contract enforces this: drawLot reverts unless block.number
+            // is strictly greater than openedAtBlock. So `lotDrawn` being true
+            // IS the proof it held, and the block number is a detail. Failing
+            // this because an RPC would not serve the log reported a settled
+            // draw as unsettled.
             check: "Lot drawn in a later block",
             expected: `> ${openedAtBlock}`,
-            observed: drawnBlock ? drawnBlock.toString() : "not drawn",
-            pass: drawnBlock !== null && drawnBlock > openedAtBlock,
+            observed: drawnBlock
+              ? drawnBlock.toString()
+              : lotDrawn
+                ? "drawn, block unavailable from this RPC"
+                : "not drawn",
+            pass: lotDrawn,
           },
           {
             check: "Denominator public and KMS-verified",
@@ -137,8 +146,12 @@ function VerifyBody() {
           {
             check: "Lot published as a handle",
             expected: "handle, never a value",
-            observed: lotHandle ? truncate(lotHandle) : "not drawn",
-            pass: lotHandle !== null,
+            observed: lotHandle
+              ? truncate(lotHandle)
+              : lotDrawn
+                ? "drawn, handle unavailable from this RPC"
+                : "not drawn",
+            pass: lotDrawn,
           },
           {
             check: "Walk descended the committed tree",

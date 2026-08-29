@@ -101,6 +101,17 @@ contract SortisDraw is ZamaEthereumConfig {
         uint8 walkHeight;
         /// Set once drawLot has run.
         bool lotDrawn;
+        /// The lot, as a handle, and the block drawLot landed in.
+        ///
+        /// STATE, NOT JUST AN EVENT. Both are also emitted in `Drawn`, but a
+        /// frontend that reads them only from the log reports a settled draw
+        /// as unsettled whenever the RPC fails to serve that log, and public
+        /// Sepolia endpoints do that regularly: the same getLogs call against
+        /// the same host returned zero results and then one, minutes apart,
+        /// while eth_call answered correctly throughout. A fact the contract
+        /// knows should be readable from the contract.
+        bytes32 lotHandle;
+        uint256 drawnAtBlock;
         /// The resolved leaf, still encrypted. Nobody is granted this.
         euint16 resolvedLeaf;
         /// The prize as a ciphertext, for the claim path.
@@ -179,7 +190,9 @@ contract SortisDraw is ZamaEthereumConfig {
             uint64 totalWeight,
             uint8 walkHeight,
             bool lotDrawn,
-            uint64 refHour
+            uint64 refHour,
+            bytes32 lotHandle,
+            uint256 drawnAtBlock
         )
     {
         Draw storage d = _draws[drawId];
@@ -190,8 +203,29 @@ contract SortisDraw is ZamaEthereumConfig {
             d.totalWeight,
             d.walkHeight,
             d.lotDrawn,
-            d.refHour
+            d.refHour,
+            d.lotHandle,
+            d.drawnAtBlock
         );
+    }
+
+    /**
+     * @notice The register fingerprint committed when the draw was opened.
+     *
+     * @dev WORST-CASE HCU DEPTH: 0. Two stored handles.
+     *
+     *      Lets a verifier check for itself that the register has not moved
+     *      since the snapshot, by comparing these against `rootIntercept()`
+     *      and `rootSlope()` on the pool. `drawLot` enforces the same equality
+     *      on chain, but a draw still open has not reached that check yet, and
+     *      "this draw can no longer be settled" is a state a reader deserves
+     *      to see rather than discover from a revert.
+     */
+    function committedHandles(
+        uint256 drawId
+    ) external view returns (bytes32 interceptHandle, bytes32 slopeHandle) {
+        Draw storage d = _draws[drawId];
+        return (d.interceptHandle, d.slopeHandle);
     }
 
     /**
@@ -367,6 +401,8 @@ contract SortisDraw is ZamaEthereumConfig {
         FHE.allowThis(prizeCiphertext);
 
         d.lotDrawn = true;
+        d.lotHandle = euint64.unwrap(lot);
+        d.drawnAtBlock = block.number;
         d.totalWeight = totalWeight;
         d.walkHeight = pool.activeHeight();
         d.resolvedLeaf = resolved;
