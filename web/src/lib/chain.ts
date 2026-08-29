@@ -53,6 +53,42 @@ export const CONFIGURED = Boolean(ADDRESSES.pool && ADDRESSES.draw && ADDRESSES.
  */
 export const DEPLOY_BLOCK = BigInt(process.env.NEXT_PUBLIC_DEPLOY_BLOCK ?? "11578000");
 
+/**
+ * Largest block span one getLogs call may cover.
+ *
+ * Infura rejects anything wider than 10,000 blocks, and the deployment is
+ * already further behind the head than that, so a single query from
+ * DEPLOY_BLOCK to latest fails outright and takes the draw history and the
+ * register slots down with it. The window only gets wider as the chain
+ * advances, so this is not a problem that waits: it is load-bearing.
+ */
+const LOG_WINDOW = 9_000n;
+
+/**
+ * getLogs across an arbitrary span, in windows the provider will accept.
+ *
+ * Windows are queried oldest first and failures are skipped rather than
+ * thrown. One unavailable window should cost the rows inside it, not the whole
+ * table: a partial history is useful and an error page is not.
+ */
+async function getLogsChunked<T>(
+  params: Omit<Parameters<typeof publicClient.getLogs>[0], "fromBlock" | "toBlock">,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let start = fromBlock; start <= toBlock; start += LOG_WINDOW + 1n) {
+    const end = start + LOG_WINDOW > toBlock ? toBlock : start + LOG_WINDOW;
+    try {
+      const logs = await publicClient.getLogs({ ...params, fromBlock: start, toBlock: end } as never);
+      out.push(...(logs as unknown as T[]));
+    } catch {
+      // Skip this window. See above.
+    }
+  }
+  return out;
+}
+
 /** A ciphertext handle that has never been written. */
 export const ZERO_HANDLE = `0x${"0".repeat(64)}` as const;
 
@@ -165,12 +201,11 @@ async function readDraw(id: bigint): Promise<DrawRow> {
 async function readDrawnEvents(): Promise<Map<string, { lot: `0x${string}`; block: bigint }>> {
   const out = new Map<string, { lot: `0x${string}`; block: bigint }>();
   try {
-    const logs = await publicClient.getLogs({
-      address: DRAW,
-      event: EV_DRAWN,
-      fromBlock: DEPLOY_BLOCK,
-      toBlock: "latest",
-    });
+    const head = await publicClient.getBlockNumber();
+    const logs = await getLogsChunked<{
+      args: { drawId?: bigint; lotHandle?: `0x${string}` };
+      blockNumber: bigint | null;
+    }>({ address: DRAW, event: EV_DRAWN }, DEPLOY_BLOCK, head);
     for (const log of logs) {
       if (log.args.drawId !== undefined && log.args.lotHandle !== undefined) {
         out.set(log.args.drawId.toString(), { lot: log.args.lotHandle, block: log.blockNumber! });
@@ -257,12 +292,12 @@ export async function readDrawHistory(count: bigint): Promise<DrawRow[]> {
 export async function readSlotHandles(capacity: number): Promise<(`0x${string}` | null)[]> {
   const slots: (`0x${string}` | null)[] = Array.from({ length: capacity }, () => null);
 
-  const logs = await publicClient.getLogs({
-    address: POOL,
-    event: EV_LEAF_ASSIGNED,
-    fromBlock: DEPLOY_BLOCK,
-    toBlock: "latest",
-  });
+  const head = await publicClient.getBlockNumber();
+  const logs = await getLogsChunked<{ args: { owner?: Address; leaf?: bigint } }>(
+    { address: POOL, event: EV_LEAF_ASSIGNED },
+    DEPLOY_BLOCK,
+    head,
+  );
 
   const owners = new Map<number, Address>();
   for (const log of logs) {
@@ -373,21 +408,23 @@ export type ActivityRow = {
 };
 
 export async function readActivity(account: Address): Promise<ActivityRow[]> {
+  const head = await publicClient.getBlockNumber();
+  type PoolLog = {
+    args: { leaf?: bigint };
+    blockNumber: bigint | null;
+    transactionHash: `0x${string}` | null;
+  };
   const [committed, released] = await Promise.all([
-    publicClient.getLogs({
-      address: POOL,
-      event: EV_COMMITTED,
-      args: { owner: account },
-      fromBlock: DEPLOY_BLOCK,
-      toBlock: "latest",
-    }),
-    publicClient.getLogs({
-      address: POOL,
-      event: EV_RELEASED,
-      args: { owner: account },
-      fromBlock: DEPLOY_BLOCK,
-      toBlock: "latest",
-    }),
+    getLogsChunked<PoolLog>(
+      { address: POOL, event: EV_COMMITTED, args: { owner: account } },
+      DEPLOY_BLOCK,
+      head,
+    ),
+    getLogsChunked<PoolLog>(
+      { address: POOL, event: EV_RELEASED, args: { owner: account } },
+      DEPLOY_BLOCK,
+      head,
+    ),
   ]);
 
   const rows: ActivityRow[] = [

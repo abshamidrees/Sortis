@@ -36,3 +36,9 @@ t54-design/
 
 # Screenshot output from scripts/shoot.mjs
 shots/
+
+.vercel
+.env*
+
+# Design reference captures. Third-party screenshots, not ours to redistribute.
+refs/
