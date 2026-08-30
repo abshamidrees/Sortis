@@ -1,0 +1,13 @@
+{
+  "network": "sepolia",
+  "pool": "0xe797Ce8f0F642045d93F329054BDF8895A6A505D",
+  "drawId": 2,
+  "activeHeight": 2,
+  "stakes": 4,
+  "drawLotGas": "936116",
+  "openGas": "365903",
+  "realDepth": 2199000,
+  "realGlobal": 3270128,
+  "mockDepth": 1549000,
+  "ranAt": "2026-08-27T11:31:15.041Z"
+}

@@ -23,7 +23,14 @@ gas-report.txt
 .DS_Store
 .idea/
 .vscode/
-deployments/
+# deployments/ is TRACKED on purpose.
+#
+# It holds the addresses a judge verifies against and the measured HCU from the
+# live draw. Ignoring it meant the two numbers this submission rests on existed
+# only on my machine, and a claim in the README that nothing in the repository
+# can support is worth nothing. There are no keys in these files, only
+# addresses, gas and block numbers, all of which are public the moment the
+# transaction lands.
 
 # Unrelated to Sortis: agent tooling and design-reference dumps for other
 # projects that happen to live in this working directory.

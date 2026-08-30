@@ -1,0 +1,177 @@
+{
+  "network": "sepolia",
+  "pool": "0xa57F6D5FC7780cbE5324EeC26d5a6BA88D22AeBa",
+  "draw": "0xBB39Fd2c061A138940dfC3aC182B5847d163EC57",
+  "drawId": 1,
+  "totalWeight": "1000000",
+  "walkHeight": 0,
+  "openBlock": 11578459,
+  "openGas": "717627",
+  "drawGas": "631749",
+  "claimGas": "501341",
+  "resolvedLeafHandle": "0x19b1160481b7f86cd17119a4f954bdd0d6c5354f9eff0000000000aa36a70300",
+  "won": "50000",
+  "steps": [
+    {
+      "at": "14:32:09",
+      "step": "init",
+      "detail": "downloading key material, this takes about twenty minutes"
+    },
+    {
+      "at": "14:32:53",
+      "step": "  ready",
+      "detail": "45s"
+    },
+    {
+      "at": "14:32:53",
+      "step": "fund",
+      "detail": "skipped, already funded"
+    },
+    {
+      "at": "14:32:59",
+      "step": "wallet",
+      "detail": "1400000"
+    },
+    {
+      "at": "14:32:59",
+      "step": "commit",
+      "detail": "skipped, a stake already exists"
+    },
+    {
+      "at": "14:33:10",
+      "step": "stake",
+      "detail": "600000"
+    },
+    {
+      "at": "14:33:12",
+      "step": "hour",
+      "detail": "1 since genesis"
+    },
+    {
+      "at": "14:33:12",
+      "step": "hold",
+      "detail": "skipped, the stake already carries weight"
+    },
+    {
+      "at": "14:33:14",
+      "step": "hour",
+      "detail": "1 since genesis"
+    },
+    {
+      "at": "14:33:14",
+      "step": "release",
+      "detail": "400000"
+    },
+    {
+      "at": "14:34:03",
+      "step": "  mined",
+      "detail": "block 11578451  gas 1206091"
+    },
+    {
+      "at": "14:34:09",
+      "step": "stake",
+      "detail": "200000"
+    },
+    {
+      "at": "14:34:16",
+      "step": "wallet",
+      "detail": "1800000"
+    },
+    {
+      "at": "14:34:16",
+      "step": "release",
+      "detail": "50000000 (more than the stake holds)"
+    },
+    {
+      "at": "14:35:06",
+      "step": "  mined",
+      "detail": "block 11578456  gas 1206083  status 1"
+    },
+    {
+      "at": "14:35:16",
+      "step": "stake",
+      "detail": "200000"
+    },
+    {
+      "at": "14:35:16",
+      "step": "  no-op",
+      "detail": "the transaction succeeded and the stake did not move"
+    },
+    {
+      "at": "14:35:16",
+      "step": "accrue",
+      "detail": "50000 of yield into the pot"
+    },
+    {
+      "at": "14:35:27",
+      "step": "openDraw",
+      "detail": "committing the register before any randomness exists"
+    },
+    {
+      "at": "14:35:39",
+      "step": "  opened",
+      "detail": "draw 1 at block 11578459  prize 50000  hour 1"
+    },
+    {
+      "at": "14:35:39",
+      "step": "  total handle",
+      "detail": "0x82ec18f0ffd9a38145df268b77f651295501dcbd83ff0000000000aa36a70500"
+    },
+    {
+      "at": "14:35:39",
+      "step": "  gas",
+      "detail": "717627"
+    },
+    {
+      "at": "14:35:39",
+      "step": "publicDecrypt",
+      "detail": "fetching the KMS proof for the committed total"
+    },
+    {
+      "at": "14:35:44",
+      "step": "  total weight",
+      "detail": "1000000"
+    },
+    {
+      "at": "14:35:44",
+      "step": "wait",
+      "detail": "for a block after the open"
+    },
+    {
+      "at": "14:35:53",
+      "step": "drawLot",
+      "detail": "native randomness, reduced modulo the verified total"
+    },
+    {
+      "at": "14:36:20",
+      "step": "  drawn",
+      "detail": "walk height 0  total 1000000"
+    },
+    {
+      "at": "14:36:21",
+      "step": "  resolved leaf",
+      "detail": "0x19b1160481b7f86cd17119a4f954bdd0d6c5354f9eff0000000000aa36a70300"
+    },
+    {
+      "at": "14:36:21",
+      "step": "  gas",
+      "detail": "631749"
+    },
+    {
+      "at": "14:36:28",
+      "step": "claimPrize",
+      "detail": ""
+    },
+    {
+      "at": "14:36:53",
+      "step": "  gas",
+      "detail": "501341"
+    },
+    {
+      "at": "14:36:58",
+      "step": "result",
+      "detail": "WON 50000"
+    }
+  ],
+  "ranAt": "2026-08-27T14:36:59.268Z"
+}

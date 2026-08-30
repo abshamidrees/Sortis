@@ -1,0 +1,14 @@
+{
+  "drawId": 1,
+  "leaves": 24,
+  "walkHeight": 5,
+  "totalWeight": "124000000",
+  "openGas": "739807",
+  "drawLotGas": "2566618",
+  "claimGas": "501341",
+  "sequentialDepth": 4476000,
+  "globalHCU": 9134672,
+  "mockDepth": 4476000,
+  "diverged": false,
+  "ranAt": "2026-08-30T09:28:16.878Z"
+}
