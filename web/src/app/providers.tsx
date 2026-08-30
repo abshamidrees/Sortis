@@ -50,16 +50,27 @@ function WalletBridge({ children }: { children: ReactNode }) {
   const { setActiveWallet } = useSetActiveWallet();
   const { address, isConnected } = useAccount();
 
+  const wallet = wallets[0];
+
+  /*
+    Keyed on the ADDRESS, not on the wallet object.
+
+    useWallets returns a fresh array on every render, so depending on it would
+    re-run this effect on every render and call setActiveWallet in a loop
+    against the connector. The address is a primitive and only changes when the
+    thing we care about changes.
+  */
+  const privyAddress = wallet?.address;
+  const attached = isConnected && address?.toLowerCase() === privyAddress?.toLowerCase();
+
   useEffect(() => {
-    const wallet = wallets[0];
-    if (!wallet) return;
-    // Also covers the case where Privy switched wallets underneath wagmi.
-    if (isConnected && address?.toLowerCase() === wallet.address.toLowerCase()) return;
+    if (!wallet || attached) return;
     void setActiveWallet(wallet).catch(() => {
       // A wallet that will not attach leaves the screens reading "not
       // connected", which is the honest state rather than a false positive.
     });
-  }, [wallets, isConnected, address, setActiveWallet]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privyAddress, attached, setActiveWallet]);
 
   return <>{children}</>;
 }
