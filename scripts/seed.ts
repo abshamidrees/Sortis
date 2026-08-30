@@ -40,9 +40,16 @@ const AMOUNTS = [
 
 /** Explicit gas pricing. ethers reserves at maxFeePerGas, not at the going
  *  rate, so leaving it to the default doubles what each account has to hold. */
-const MAX_FEE = 1_600_000_000n; // 1.6 gwei
+const MAX_FEE = 1_400_000_000n; // 1.4 gwei, comfortably above Sepolia at ~1
 const MAX_PRIORITY = 100_000_000n; // 0.1 gwei
-const FUND_PER_ACCOUNT = ethers.parseEther("0.0032");
+/**
+ * Enough for one commit and nothing spare.
+ *
+ * A commit is about 1.7M gas, and ethers reserves at maxFeePerGas rather than
+ * at the going rate, so this has to cover 1.7M * MAX_FEE. Anything more is
+ * stranded in a throwaway wallet once the run finishes.
+ */
+const FUND_PER_ACCOUNT = ethers.parseEther("0.0028");
 
 /**
  * A dropped socket must not lose twenty minutes of work.
@@ -117,6 +124,14 @@ async function main() {
     const w = ethers.Wallet.createRandom().connect(provider);
     log(`stake ${i + 1}/${need}`, `${amount} to ${w.address.slice(0, 10)}`);
 
+    // Encrypt first. This is the only step that touches the relayer and the
+    // only one that fails on this link, so doing it before any transaction
+    // means a failure costs nothing. Funding first is how eight dead attempts
+    // stranded ETH in eight throwaway wallets.
+    const enc = await resilient("encrypt", () =>
+      fhevm.createEncryptedInput(rec.pool, w.address).add64(amount).encrypt(),
+    );
+
     await resilient("fund", async () =>
       (
         await deployer.sendTransaction({
@@ -134,9 +149,6 @@ async function main() {
       (await cusdtAs.setOperator(rec.pool, 2n ** 47n, overrides)).wait(),
     );
 
-    const enc = await resilient("encrypt", () =>
-      fhevm.createEncryptedInput(rec.pool, w.address).add64(amount).encrypt(),
-    );
     const poolAs = pool.connect(w) as typeof pool;
     const r = await resilient("commit", async () =>
       (await poolAs.commit(enc.handles[0], enc.inputProof, overrides)).wait(),
