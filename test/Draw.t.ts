@@ -63,7 +63,7 @@ async function deployRig(deployer: HardhatEthersSigner): Promise<Rig> {
 
   const draw = (await (
     await ethers.getContractFactory("SortisDraw", deployer)
-  ).deploy(poolAddress, await yieldAdapter.getAddress())) as unknown as SortisDraw;
+  ).deploy(poolAddress, await yieldAdapter.getAddress(), 0)) as unknown as SortisDraw;
   await draw.waitForDeployment();
   const drawAddress = await draw.getAddress();
 
@@ -400,7 +400,7 @@ describe("SortisDraw", function () {
 
       const draw = (await (
         await ethers.getContractFactory("SortisDraw", deployer)
-      ).deploy(await pool.getAddress(), await yieldAdapter.getAddress())) as unknown as SortisDraw;
+      ).deploy(await pool.getAddress(), await yieldAdapter.getAddress(), 0)) as unknown as SortisDraw;
       await draw.waitForDeployment();
       await (await pool.setDrawContract(await draw.getAddress())).wait();
 
@@ -453,6 +453,99 @@ describe("SortisDraw", function () {
 });
 
 // ---------------------------------------------------------------------------
+
+describe("anyone may run a draw, and not too often", function () {
+  let deployer: HardhatEthersSigner;
+  let alice: HardhatEthersSigner;
+
+  before(async function () {
+    if (!fhevm.isMock) this.skip();
+    [deployer, alice] = await ethers.getSigners();
+  });
+
+  /** A rig whose draw contract enforces a real interval. */
+  async function deployWithInterval(seconds: number) {
+    const usdt = (await (
+      await ethers.getContractFactory("MockConfidentialUSDT", deployer)
+    ).deploy()) as unknown as MockConfidentialUSDT;
+    await usdt.waitForDeployment();
+    const usdtAddress = await usdt.getAddress();
+
+    const pool = (await (
+      await ethers.getContractFactory("SortisPool", deployer)
+    ).deploy(usdtAddress, DEPTH)) as unknown as SortisPool;
+    await pool.waitForDeployment();
+
+    const yieldAdapter = (await (
+      await ethers.getContractFactory("MockYieldAdapter", deployer)
+    ).deploy(usdtAddress)) as unknown as MockYieldAdapter;
+    await yieldAdapter.waitForDeployment();
+
+    const draw = (await (
+      await ethers.getContractFactory("SortisDraw", deployer)
+    ).deploy(await pool.getAddress(), await yieldAdapter.getAddress(), seconds)) as unknown as SortisDraw;
+    await draw.waitForDeployment();
+    await (await pool.setDrawContract(await draw.getAddress())).wait();
+
+    const rig = {
+      cusdt: usdt,
+      pool,
+      draw,
+      yieldAdapter,
+      poolAddress: await pool.getAddress(),
+      cusdtAddress: usdtAddress,
+      drawAddress: await draw.getAddress(),
+    } as Rig;
+
+    await commit(rig, alice, 1_000_000n);
+    await advanceHours(5);
+    await commit(rig, alice, 0n);
+    return rig;
+  }
+
+  it("lets a wallet that is not the deployer open and settle a draw", async function () {
+    const rig = await deployWithInterval(0);
+    await (await rig.yieldAdapter.accrue(10_000n)).wait();
+
+    // alice deployed nothing and owns nothing. The bounty requires a judge to
+    // be able to try every feature, so a draw an operator alone can trigger
+    // fails the brief regardless of how well it works.
+    await (await rig.draw.connect(alice).openDraw()).wait();
+    await advanceHours(0);
+    await drawLot(rig, 1n, alice);
+
+    const [, , , , , lotDrawn] = await rig.draw.drawInfo(1);
+    expect(lotDrawn, "a non-owner settled the draw").to.equal(true);
+  });
+
+  it("refuses a second draw inside the interval, and allows it after", async function () {
+    const rig = await deployWithInterval(600);
+    await (await rig.yieldAdapter.accrue(10_000n)).wait();
+    await (await rig.draw.openDraw()).wait();
+
+    expect(await rig.draw.secondsUntilNextDraw()).to.be.greaterThan(0);
+    await expect(rig.draw.connect(alice).openDraw()).to.be.revertedWithCustomError(
+      rig.draw,
+      "DrawTooSoon",
+    );
+
+    await ethers.provider.send("evm_increaseTime", [601]);
+    await ethers.provider.send("evm_mine", []);
+
+    expect(await rig.draw.secondsUntilNextDraw()).to.equal(0);
+    await (await rig.draw.connect(alice).openDraw()).wait();
+    expect(await rig.draw.drawCount()).to.equal(2n);
+  });
+
+  it("opens immediately the first time, whatever the interval", async function () {
+    // nextDrawAt is zero until a draw has been opened, so a fresh deployment
+    // is not locked out for its own interval before it has done anything.
+    const rig = await deployWithInterval(86_400);
+    expect(await rig.draw.secondsUntilNextDraw()).to.equal(0);
+    await (await rig.draw.connect(alice).openDraw()).wait();
+    expect(await rig.draw.drawCount()).to.equal(1n);
+  });
+});
 
 describe("SortisWrapQueue", function () {
   let deployer: HardhatEthersSigner;

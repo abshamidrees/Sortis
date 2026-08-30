@@ -67,6 +67,18 @@ process.on("unhandledRejection", (e) => {
   process.exit(1);
 });
 
+/**
+ * Seconds per accrual unit. SortisTwab.TIME_UNIT.
+ *
+ * The pool exposes two time values in DIFFERENT UNITS that look
+ * interchangeable: timeUnitsNow() is an hour INDEX since genesis, and
+ * lastChangeOf() is a raw timestamp in SECONDS. Subtracting one from the other
+ * gives a hugely negative number that clamps to zero, so every stake read as
+ * "0h held" and this gate refused to open while all 24 leaves were in fact
+ * accruing.
+ */
+const TIME_UNIT_SECONDS = 3600;
+
 async function main() {
   const network = hre.network.name;
   const rec = JSON.parse(readFileSync(join(__dirname, "..", "deployments", `${network}.json`), "utf8"));
@@ -84,10 +96,12 @@ async function main() {
   // ---- the gate ---------------------------------------------------------
   const owners = await readOwners(provider, rec.pool);
   const countWeighted = async () => {
+    const nowSeconds = Number((await provider.getBlock("latest"))!.timestamp);
     const nowHour = Number(await pool.timeUnitsNow());
     let n = 0;
     for (const owner of owners.values()) {
-      if (nowHour - Number(await pool.lastChangeOf(owner)) > 0) n++;
+      const lastChange = Number(await pool.lastChangeOf(owner));
+      if (Math.floor((nowSeconds - lastChange) / TIME_UNIT_SECONDS) > 0) n++;
     }
     return { nowHour, n };
   };

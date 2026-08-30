@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
@@ -10,5 +10,11 @@
     "resolveJsonModule": true,
     "outDir": "dist"
   },
-  "include": ["hardhat.config.ts", "contracts/**/*.ts", "test/**/*.ts", "tasks/**/*.ts", "scripts/**/*.ts"]
+  "include": ["hardhat.config.ts", "contracts/**/*.ts", "test/**/*.ts", "tasks/**/*.ts", "scripts/**/*.ts"],
+  /* test/Guards.t.ts imports the guard rules from web/src so the rules are
+     tested where they are defined rather than duplicated. That pulls web's
+     dependency tree into this project's typecheck, and viem ships ox as TS
+     source whose webauthn module needs the DOM lib this project does not have.
+     Excluding the nested modules keeps the import without the tree. */
+  "exclude": ["node_modules", "web/node_modules", "web/.next"]
 }

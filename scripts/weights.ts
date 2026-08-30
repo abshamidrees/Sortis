@@ -32,6 +32,18 @@ const { ethers } = hre;
  * of amount times hours should match.
  */
 
+/**
+ * Seconds per accrual unit. SortisTwab.TIME_UNIT.
+ *
+ * The pool exposes two time values in DIFFERENT UNITS that look
+ * interchangeable: timeUnitsNow() is an hour INDEX since genesis, and
+ * lastChangeOf() is a raw timestamp in SECONDS. Subtracting one from the other
+ * gives a hugely negative number that clamps to zero, so every stake read as
+ * "0h held" and this gate refused to open while all 24 leaves were in fact
+ * accruing.
+ */
+const TIME_UNIT_SECONDS = 3600;
+
 async function main() {
   const network = hre.network.name;
   const rec = JSON.parse(readFileSync(join(__dirname, "..", "deployments", `${network}.json`), "utf8"));
@@ -69,6 +81,7 @@ async function main() {
   // Leaf ownership is public: _update writes a visible path of storage slots,
   // so which leaf moved is on chain regardless. Read with ethers rather than
   // viem, which is a dependency of the web app and not of this project.
+  const nowSeconds = Number((await provider.getBlock("latest"))!.timestamp);
   const head = await provider.getBlockNumber();
   const from = Number(process.env.DEPLOY_BLOCK ?? "11578000");
   const topic = ethers.id("LeafAssigned(address,uint256)");
@@ -103,7 +116,7 @@ async function main() {
   for (const leaf of [...owners.keys()].sort((a, b) => a - b)) {
     const owner = owners.get(leaf)!;
     const lastChange = Number(await pool.lastChangeOf(owner));
-    const hours = Math.max(0, Number(nowHour) - lastChange);
+    const hours = Math.max(0, Math.floor((nowSeconds - lastChange) / TIME_UNIT_SECONDS));
     const amount = amountByOwner.get(owner.toLowerCase());
     const contribution = amount !== undefined ? amount * BigInt(hours) : null;
 

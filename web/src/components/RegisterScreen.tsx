@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount, useSignTypedData, useWriteContract, usePublicClient } from "wagmi";
+import {
+  useAccount,
+  useChainId,
+  useSignTypedData,
+  useSwitchChain,
+  useWriteContract,
+  usePublicClient,
+} from "wagmi";
 
 import { AppShell } from "@/components/chrome/AppShell";
 import { CUSDT_ABI, POOL_ABI } from "@/lib/abi";
@@ -17,6 +24,7 @@ import {
   type Position,
 } from "@/lib/chain";
 import { useFhevm } from "@/lib/fhevm";
+import { guardCommit, guardRelease, toBaseUnits, SEPOLIA_ID, type Guard } from "@/lib/guards";
 import shell from "@/components/chrome/AppShell.module.css";
 
 /**
@@ -135,6 +143,8 @@ function CostPanel() {
 
 export function RegisterScreen() {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const { signTypedDataAsync } = useSignTypedData();
@@ -184,13 +194,6 @@ export function RegisterScreen() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  /** cUSDT is 6 decimals. "1.5" becomes 1_500_000. */
-  const toBaseUnits = (input: string): bigint => {
-    const [whole, frac = ""] = input.trim().split(".");
-    const padded = (frac + "000000").slice(0, 6);
-    return BigInt(whole || "0") * 1_000_000n + BigInt(padded || "0");
-  };
 
   const decrypt = useCallback(
     async (which: "stake" | "wallet") => {
@@ -369,6 +372,53 @@ export function RegisterScreen() {
 
   const busy = (tx: TxState) => tx.status === "pending";
 
+  /*
+    The four states the rules name, checked BEFORE a transaction is built.
+
+    A revert surfaced from a wallet is a hex string and a stack, and none of
+    these four are the user doing something wrong. Three have an action that
+    fixes them. The fourth is not a failure at all.
+  */
+  const commitGuard = guardCommit({
+    chainId,
+    isOperator: position?.isOperator ?? true,
+    walletClear,
+    amount: toBaseUnits(commitAmount),
+  });
+  const releaseGuard = guardRelease({
+    chainId,
+    stakeClear,
+    amount: toBaseUnits(releaseAmount),
+  });
+
+  const renderGuard = (guard: Guard | null) =>
+    guard ? (
+      <p className={`${shell.cost} ${guard.blocking ? shell.fault : ""}`} role="alert">
+        {guard.message}
+        {guard.action === "switch-network" ? (
+          <button
+            type="button"
+            className={shell.inlineAction}
+            style={{ marginLeft: "var(--s-2)" }}
+            onClick={() => switchChain?.({ chainId: SEPOLIA_ID })}
+          >
+            {guard.actionLabel}
+          </button>
+        ) : null}
+        {guard.action === "faucet" ? (
+          <button
+            type="button"
+            className={shell.inlineAction}
+            style={{ marginLeft: "var(--s-2)" }}
+            onClick={runFaucet}
+            disabled={busy(faucetTx)}
+          >
+            {guard.actionLabel}
+          </button>
+        ) : null}
+      </p>
+    ) : null;
+
 
 
   return (
@@ -433,7 +483,11 @@ export function RegisterScreen() {
                 <span className={shell.kvValue}>
                   <span className="ciphertext">{truncate(position?.weightHandle)}</span>
                   <span className={shell.kvAside}>
-                    {position ? `${position.hoursHeld}h held` : ""}
+                    {position
+                      ? position.hoursHeld === 0
+                        ? "0h held, carries no weight yet"
+                        : `${position.hoursHeld}h held`
+                      : ""}
                   </span>
                 </span>
 
@@ -572,15 +626,28 @@ export function RegisterScreen() {
                   type="button"
                   className={shell.button}
                   onClick={() => submit("commit")}
-                  disabled={busy(commitTx)}
+                  disabled={busy(commitTx) || (commitGuard?.blocking ?? false)}
                 >
                   {busy(commitTx) ? commitTx.detail : "Commit"}
                 </button>
               </div>
+              {renderGuard(commitGuard)}
               <p className={`${shell.cost} ${commitTx.status === "failed" ? shell.fault : ""}`}>
                 {commitTx.status === "idle" || commitTx.status === "mined"
                   ? `commit() ${HCU.COMMIT_DEPTH.toLocaleString("en-US")} HCU, flat in shard size`
                   : commitTx.detail}
+              </p>
+              {/*
+                The anti-snipe rule, stated where it is about to bite.
+
+                Weight accrues in whole hours, so a stake committed minutes
+                before a draw carries nothing. A judge who deposits, triggers a
+                draw, loses, and is not told this concludes the app is broken.
+                It is the property working.
+              */}
+              <p className={shell.note}>
+                A new stake carries no weight until it has been in the pool a full hour. That is what
+                stops a deposit made moments before a draw from taking the prize.
               </p>
             </div>
           </section>
@@ -603,11 +670,12 @@ export function RegisterScreen() {
                   type="button"
                   className={shell.buttonGhost}
                   onClick={() => submit("release")}
-                  disabled={busy(releaseTx)}
+                  disabled={busy(releaseTx) || (releaseGuard?.blocking ?? false)}
                 >
                   {busy(releaseTx) ? releaseTx.detail : "Release"}
                 </button>
               </div>
+              {renderGuard(releaseGuard)}
               <p className={`${shell.cost} ${releaseTx.status === "failed" ? shell.fault : ""}`}>
                 {releaseTx.status === "idle" || releaseTx.status === "mined"
                   ? "An over-release is an encrypted no-op, never a revert."

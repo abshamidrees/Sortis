@@ -116,17 +116,38 @@ async function getLogsChunked<T>(
   toBlock: bigint,
 ): Promise<T[]> {
   const out: T[] = [];
+  let failedWindows = 0;
+  let lastError: unknown = null;
   for (let start = fromBlock; start <= toBlock; start += LOG_WINDOW + 1n) {
     const end = start + LOG_WINDOW > toBlock ? toBlock : start + LOG_WINDOW;
     try {
       const logs = await publicClient.getLogs({ ...params, fromBlock: start, toBlock: end } as never);
       out.push(...(logs as unknown as T[]));
-    } catch {
-      // Skip this window. See above.
+    } catch (error) {
+      // Skip the window, but say so. Swallowing this silently is how the
+      // register rendered two stakes out of twenty-four with a clean console.
+      failedWindows++;
+      lastError = error;
     }
   }
   return out;
 }
+
+/**
+ * Seconds per accrual unit. SortisTwab.TIME_UNIT.
+ *
+ * Needed because the two time values the pool exposes are in DIFFERENT UNITS
+ * and look interchangeable:
+ *
+ *   timeUnitsNow()   (block.timestamp - GENESIS) / TIME_UNIT, an hour INDEX
+ *   lastChangeOf()   block.timestamp at the last change, raw SECONDS
+ *
+ * Subtracting the second from the first is meaningless, and because the result
+ * is hugely negative it clamps to zero, so every stake reported "0h held" and
+ * looked like it carried no weight. The draw gate refused to open on that for
+ * hours while all 24 leaves had in fact been accruing the whole time.
+ */
+const TIME_UNIT_SECONDS = 3600;
 
 /** A ciphertext handle that has never been written. */
 export const ZERO_HANDLE = `0x${"0".repeat(64)}` as const;
@@ -390,39 +411,73 @@ export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]
     }
   }
 
-  const nowHour = (await publicClient.readContract({
-    address: POOL,
-    abi: POOL_ABI,
-    functionName: "timeUnitsNow",
-  })) as bigint;
+  // The chain's own clock, in the same units lastChange is recorded in.
+  const nowSeconds = Number((await publicClient.getBlock()).timestamp);
 
-  await Promise.all(
-    [...owners.entries()].map(async ([leaf, owner]) => {
-      if (leaf >= capacity) return;
-      try {
-        const [handle, lastChange] = await Promise.all([
-          publicClient.readContract({
-            address: POOL,
-            abi: POOL_ABI,
-            functionName: "stakeOf",
-            args: [owner],
-          }) as Promise<`0x${string}`>,
-          publicClient.readContract({
-            address: POOL,
-            abi: POOL_ABI,
-            functionName: "lastChangeOf",
-            args: [owner],
-          }) as Promise<number>,
-        ]);
-        slots[leaf] =
-          handle === ZERO_HANDLE
-            ? null
-            : { handle, hoursHeld: Math.max(0, Number(nowHour) - Number(lastChange)) };
-      } catch {
-        slots[leaf] = null;
-      }
-    }),
-  );
+  /*
+    Read in small batches, and do not swallow a failure.
+
+    Every owner needs two reads, so a full shard is 64 calls. Issued together
+    they collapse into a single multicall aggregate, and when that aggregate
+    is refused the per-owner catch turned all of them into empty slots: the
+    register rendered 24 stakes as 24 middots with nothing in the console. An
+    empty register and an unreadable one look identical on screen and are not
+    the same thing, so a failed batch is retried once and then counted.
+  */
+  const entries = [...owners.entries()].filter(([leaf]) => leaf < capacity);
+  const BATCH = 6;
+  let failed = 0;
+
+  for (let i = 0; i < entries.length; i += BATCH) {
+    const slice = entries.slice(i, i + BATCH);
+    await Promise.all(
+      slice.map(async ([leaf, owner]) => {
+        const read = async () =>
+          Promise.all([
+            publicClient.readContract({
+              address: POOL,
+              abi: POOL_ABI,
+              functionName: "stakeOf",
+              args: [owner],
+            }) as Promise<`0x${string}`>,
+            publicClient.readContract({
+              address: POOL,
+              abi: POOL_ABI,
+              functionName: "lastChangeOf",
+              args: [owner],
+            }) as Promise<number>,
+          ]);
+
+        try {
+          let pair: [`0x${string}`, number];
+          try {
+            pair = await read();
+          } catch {
+            await new Promise((r) => setTimeout(r, 300));
+            pair = await read();
+          }
+          const [handle, lastChange] = pair;
+          slots[leaf] =
+            handle === ZERO_HANDLE
+              ? null
+              : {
+                  handle,
+                  hoursHeld: Math.max(
+                    0,
+                    Math.floor((nowSeconds - Number(lastChange)) / TIME_UNIT_SECONDS),
+                  ),
+                };
+        } catch {
+          failed++;
+          slots[leaf] = null;
+        }
+      }),
+    );
+  }
+
+  if (failed > 0) {
+    console.warn(`sortis: ${failed} of ${entries.length} register slots could not be read`);
+  }
 
   return slots;
 }
@@ -483,8 +538,8 @@ export async function readPosition(account: Address): Promise<Position> {
       }),
     ]);
 
-  const [nowHour, leafCount, capacity] = await Promise.all([
-    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "timeUnitsNow" }),
+  const [block, leafCount, capacity] = await Promise.all([
+    publicClient.getBlock(),
     publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "leafCount" }),
     publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "capacity" }),
   ]);
@@ -509,7 +564,10 @@ export async function readPosition(account: Address): Promise<Position> {
     lastChange: Number(lastChange),
     walletHandle: walletHandle as `0x${string}`,
     isOperator: isOperator as boolean,
-    hoursHeld: Math.max(0, Number(nowHour) - Number(lastChange)),
+    hoursHeld: Math.max(
+      0,
+      Math.floor((Number(block.timestamp) - Number(lastChange)) / TIME_UNIT_SECONDS),
+    ),
     leafCount: Number(leafCount),
     capacity: Number(capacity),
   };

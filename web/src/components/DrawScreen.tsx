@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/chrome/AppShell";
 import { DrawColumn } from "@/components/DrawColumn";
+import { TriggerDraw } from "@/components/TriggerDraw";
 import { ETHERSCAN, HCU } from "@/lib/measurements";
 import type { Slot } from "@/lib/chain";
 import {
@@ -194,6 +195,8 @@ export function DrawScreen() {
 
         {/* --------------------------------------------------- current draw */}
         <div className={shell.stack}>
+          <TriggerDraw />
+
           <section className={shell.panel}>
             <div className={shell.panelHead}>
               <span className={shell.panelLabel}>Current draw</span>

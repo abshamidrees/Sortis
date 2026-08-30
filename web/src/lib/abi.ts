@@ -166,6 +166,27 @@ export const DRAW_ABI = [
   },
   {
     type: "function",
+    name: "minDrawInterval",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "secondsUntilNextDraw",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "openDraw",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "claimPrize",
     stateMutability: "nonpayable",
     inputs: [{ name: "drawId", type: "uint256" }],

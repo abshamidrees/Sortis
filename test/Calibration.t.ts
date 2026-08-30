@@ -63,7 +63,7 @@ describe("the drawLot ceiling", function () {
 
     const draw = await (
       await ethers.getContractFactory("SortisDraw", deployer)
-    ).deploy(poolAddress, await yieldAdapter.getAddress());
+    ).deploy(poolAddress, await yieldAdapter.getAddress(), 0);
     await draw.waitForDeployment();
     await (await pool.setDrawContract(await draw.getAddress())).wait();
 
@@ -161,7 +161,7 @@ describe("mock and chain agree on HCU", function () {
 
     const draw = await (
       await ethers.getContractFactory("SortisDraw", deployer)
-    ).deploy(poolAddress, await yieldAdapter.getAddress());
+    ).deploy(poolAddress, await yieldAdapter.getAddress(), 0);
     await draw.waitForDeployment();
     await (await pool.setDrawContract(await draw.getAddress())).wait();
 
