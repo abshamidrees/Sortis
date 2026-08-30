@@ -21,6 +21,12 @@ const config: NextConfig = {
       "@x402/evm/exact/client": false,
       "@x402/evm/upto/client": false,
       "@x402/svm/exact/client": false,
+      // Optional peers of wallet SDKs that only exist in a React Native or a
+      // Farcaster host. Webpack resolves them because the packages reference
+      // them, cannot find them in a browser build, and warns. They are not
+      // used on any code path this app takes.
+      "@react-native-async-storage/async-storage": false,
+      "@farcaster/mini-app-solana": false,
     };
 
     return cfg;

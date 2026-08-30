@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 
 import { REPO_URL } from "@/lib/measurements";
+import { PRIVY_APP_ID } from "@/lib/wagmi";
 import { SortisMark } from "./SortisMark";
 import styles from "./Nav.module.css";
 
@@ -137,17 +138,31 @@ export function Nav({ surface }: { surface: "marketing" | "app" }) {
 /**
  * Wallet connect.
  *
+ * Split in two so `usePrivy` is never called without a PrivyProvider above it.
+ * The hook itself is called unconditionally inside PrivyWalletButton; what is
+ * conditional is which component renders, and that is decided by a build-time
+ * constant. Calling it unguarded is what made the production build fail with
+ * "useWallets was called outside the PrivyProvider component".
+ */
+function WalletButton() {
+  if (!PRIVY_APP_ID) {
+    return <span className={styles.walletIdle}>wallet unconfigured</span>;
+  }
+  return <PrivyWalletButton />;
+}
+
+/**
  * Privy's own button is not used: it arrives in Privy's brand, and the nav is
  * the one element on every screen. This renders the Sortis button and calls
- * `login()`, so the only Privy surface a user sees is the wallet picker itself,
- * which is themed to brass on stone in privyConfig.
+ * `login()`, so the only Privy surface a user sees is the wallet picker
+ * itself, themed to brass on stone in privyConfig.
  *
  * Connected shows a brass dot and the truncated address in IBM Plex Mono, and
  * clicking disconnects. The dot is --brass rather than --seal on purpose:
  * --seal means encrypted in this palette, and a connection indicator in that
  * colour would read as a privacy state.
  */
-function WalletButton() {
+function PrivyWalletButton() {
   const { ready, authenticated, login, logout, user } = usePrivy();
 
   if (!ready) {
