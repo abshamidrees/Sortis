@@ -157,11 +157,6 @@
   margin-top: 0;
 }
 
-.articleTitle {
-  font-size: 1.625rem;
-  margin: 0 0 var(--s-5);
-}
-
 .h3 {
   font-family: var(--font-display);
   font-weight: 600;
@@ -200,4 +195,119 @@
   padding: var(--s-4);
   overflow-x: auto;
   margin: 0 0 var(--s-4);
+}
+
+/* --------------------------------------------------------- four routes --- */
+
+/* The page you are on. The rail could not show this while the docs were four
+   anchors on one scroll, which was half the reason for splitting them. */
+.railLink[data-active] {
+  color: var(--ink);
+  border-left-color: var(--brass);
+}
+
+/* A stated limit, marked so it cannot be skimmed past as ordinary prose.
+   Brass rule rather than a coloured panel: this is a caveat worth stopping on,
+   not a warning, and the palette has one accent. */
+.note {
+  margin: var(--s-5) 0;
+  padding: var(--s-3) 0 var(--s-3) var(--s-4);
+  border-left: 2px solid var(--brass);
+  color: var(--graphite);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  max-width: 64ch;
+}
+
+/* Reading order, restored. Four routes lose the scroll that used to carry a
+   reader from one section into the next. */
+.pager {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-4);
+  margin-top: var(--s-8);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+}
+
+.pagerLink {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-slot);
+  text-decoration: none;
+  transition: border-color 120ms var(--ease-step),
+    background 120ms var(--ease-step);
+}
+
+.pagerLink[data-side="next"] {
+  text-align: right;
+  grid-column: 2;
+}
+
+.pagerLink:hover {
+  border-color: var(--brass);
+  background: var(--brass-wash);
+}
+
+.pagerLabel {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+.pagerTitle {
+  font-size: 0.9375rem;
+  color: var(--ink);
+}
+
+/* The index's three measured facts. A definition list because that is what it
+   is, and because the numbers have to come from measurements.ts rather than
+   from a sentence somebody typed. */
+.facts {
+  margin-top: var(--s-8);
+  padding-top: var(--s-5);
+  border-top: 1px solid var(--rule);
+  display: grid;
+  gap: 0;
+}
+
+.fact {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-4);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.fact:last-child {
+  border-bottom: none;
+}
+
+.factKey {
+  font-size: 0.9375rem;
+  color: var(--graphite);
+}
+
+.factValue {
+  font-family: var(--font-data);
+  font-size: 0.9375rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .pager {
+    grid-template-columns: 1fr;
+  }
+
+  .pagerLink[data-side="next"] {
+    grid-column: 1;
+  }
 }

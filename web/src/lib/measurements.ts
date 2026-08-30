@@ -15,6 +15,29 @@ export const MEASUREMENT_COMMIT = "c234b6a";
 /** The Sepolia draw that confirmed the mock's accounting. Height 2. */
 export const SEPOLIA_CHECK = { height: 2, depth: 2_199_000, mockDepth: 2_199_000 } as const;
 
+/**
+ * The live draw at the size actually deployed, which is the one that counts.
+ *
+ * The height 2 check above was reassuring; this one is load bearing. The shard
+ * ceiling sits at 89.52% of the depth budget, so a disagreement between the
+ * mock and the coprocessor of even one percent would have forced the register
+ * down to height 4. They agreed to the unit.
+ *
+ * deployments/sepolia-livedraw.json, written by scripts/draw.ts.
+ */
+export const LIVE_DRAW = {
+  drawId: 1,
+  leaves: 24,
+  walkHeight: 5,
+  openedAtBlock: 11_597_931,
+  totalWeight: 124_000_000,
+  prize: 9_000_000,
+  drawLotGas: 2_566_618,
+  depth: 4_476_000,
+  globalHCU: 9_134_672,
+  mockDepth: 4_476_000,
+} as const;
+
 export const HCU = {
   /** FHEVM caps the longest dependent chain in one transaction. */
   DEPTH_LIMIT: 5_000_000,

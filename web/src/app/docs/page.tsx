@@ -1,97 +1,76 @@
-import { Nav } from "@/components/chrome/Nav";
+import type { Metadata } from "next";
+import Link from "next/link";
+
 import { DOCS } from "@/lib/docs";
-import { REPO_URL } from "@/lib/measurements";
+import { HCU, LIVE_DRAW } from "@/lib/measurements";
 import styles from "./docs.module.css";
 
+export const metadata: Metadata = {
+  title: "Documentation | Sortis",
+  description:
+    "Confidential prize-linked savings on the Zama Protocol. What it is, how the register works, what stays private, and what it does not do.",
+};
+
 /**
- * docs.sortis.xyz
+ * The docs index.
  *
- * Four pages, all written. A short honest page beats a promise of six, and the
- * previous placeholder listing pages that did not exist was the worst kind of
- * overclaim: checkable in one click.
+ * A contents page and nothing else. It used to be the contents followed by all
+ * four documents inlined beneath it, which meant the index was decoration:
+ * every link scrolled you somewhere you had already loaded. Now each entry
+ * goes to its own route and this page is short on purpose.
  */
 export default function DocsIndex() {
   return (
     <>
-      <Nav surface="marketing" />
-      <main className={styles.main}>
-        <div className={styles.shell}>
-          <aside className={styles.rail}>
-            <div className={styles.railGroup}>
-              <span className={styles.railLabel}>Documentation</span>
-              {DOCS.map((doc) => (
-                <a key={doc.slug} className={styles.railLink} href={`#${doc.slug}`}>
-                  {doc.title}
-                </a>
-              ))}
-            </div>
-            <div className={styles.railGroup}>
-              <span className={styles.railLabel}>Product</span>
-              <a className={styles.railLink} href="/app">
-                Open the app
-              </a>
-              <a className={styles.railLink} href="/app/verify">
-                Verify a draw
-              </a>
-            </div>
-            <div className={styles.railGroup}>
-              <span className={styles.railLabel}>Source</span>
-              <a className={styles.railLink} href={REPO_URL}>
-                Repository
-              </a>
-              <a className={styles.railLink} href={`${REPO_URL}/blob/main/test/HCU.t.ts`}>
-                HCU measurements
-              </a>
-            </div>
-          </aside>
+      <p className="eyebrow">Documentation</p>
+      <h1 className={styles.title}>Sortis</h1>
+      <p className={styles.lede}>
+        Confidential prize-linked savings on the Zama Protocol. Four pages: what
+        it is, how the register works, what stays private, and what it does not
+        do.
+      </p>
 
-          <div className={styles.inner}>
-          <p className="eyebrow">Documentation</p>
-          <h1 className={styles.title}>Sortis</h1>
-          <p className={styles.lede}>
-            Confidential prize-linked savings on the Zama Protocol. Four pages: what it is, how the
-            register works, what stays private, and what it does not do.
-          </p>
+      <nav className={styles.index}>
+        {DOCS.map((doc, i) => (
+          <Link
+            key={doc.slug}
+            className={styles.indexRow}
+            href={`/docs/${doc.slug}`}
+          >
+            <span className={styles.indexNumber}>
+              {String(i + 1).padStart(2, "0")}
+            </span>
+            <span className={styles.indexTitle}>{doc.title}</span>
+            <span className={styles.indexBlurb}>{doc.blurb}</span>
+          </Link>
+        ))}
+      </nav>
 
-          <nav className={styles.index}>
-            {DOCS.map((doc, i) => (
-              <a key={doc.slug} className={styles.indexRow} href={`#${doc.slug}`}>
-                <span className={styles.indexNumber}>{String(i + 1).padStart(2, "0")}</span>
-                <span className={styles.indexTitle}>{doc.title}</span>
-                <span className={styles.indexBlurb}>{doc.blurb}</span>
-              </a>
-            ))}
-          </nav>
-
-          {DOCS.map((doc) => (
-            <article key={doc.slug} id={doc.slug} className={styles.article}>
-              <h2 className={styles.articleTitle}>{doc.title}</h2>
-              {doc.body.map((block, i) =>
-                block.type === "p" ? (
-                  <p key={i} className={styles.p}>
-                    {block.text}
-                  </p>
-                ) : block.type === "h" ? (
-                  <h3 key={i} className={styles.h3}>
-                    {block.text}
-                  </h3>
-                ) : block.type === "code" ? (
-                  <pre key={i} className={styles.pre}>
-                    {block.text}
-                  </pre>
-                ) : (
-                  <ul key={i} className={styles.ul}>
-                    {block.items.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                ),
-              )}
-            </article>
-          ))}
-          </div>
+      {/*
+        The two numbers the whole submission rests on, on the page a reader
+        lands on first. Both are measured: the mock and the Sepolia
+        coprocessor were asked the same question and gave the same answer, and
+        at 89.52% of budget that agreement is the reason the shard is 32.
+      */}
+      <dl className={styles.facts}>
+        <div className={styles.fact}>
+          <dt className={styles.factKey}>Shard capacity</dt>
+          <dd className={styles.factValue}>{HCU.SHARD_CEILING} stakes</dd>
         </div>
-      </main>
+        <div className={styles.fact}>
+          <dt className={styles.factKey}>Draw depth, measured on Sepolia</dt>
+          <dd className={styles.factValue}>
+            {LIVE_DRAW.depth.toLocaleString("en-US")} of{" "}
+            {HCU.DEPTH_LIMIT.toLocaleString("en-US")}
+          </dd>
+        </div>
+        <div className={styles.fact}>
+          <dt className={styles.factKey}>Same figure from the mock</dt>
+          <dd className={styles.factValue}>
+            {LIVE_DRAW.mockDepth.toLocaleString("en-US")}
+          </dd>
+        </div>
+      </dl>
     </>
   );
 }
