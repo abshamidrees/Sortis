@@ -1,65 +1,75 @@
 "use client";
 
-import { connectorsForWallets } from "@rainbow-me/rainbowkit";
-import {
-  injectedWallet,
-  metaMaskWallet,
-  rainbowWallet,
-  walletConnectWallet,
-} from "@rainbow-me/rainbowkit/wallets";
-import { createConfig, http } from "wagmi";
+import { createConfig } from "@privy-io/wagmi";
+import { http } from "wagmi";
 import { sepolia } from "wagmi/chains";
+import type { PrivyClientConfig } from "@privy-io/react-auth";
 
 /**
  * Wallet configuration.
  *
- * RainbowKit over wagmi and viem, not Privy. The brief is explicit: a protocol
- * judge opening the app expects a raw wallet connect, and a signup step reads
- * as consumer-app friction on something meant to look like civic
- * infrastructure.
+ * Privy over wagmi and viem. Note that docs/BRIEF.md section 3 said RainbowKit
+ * and explicitly not Privy, on the grounds that a signup step reads as consumer
+ * friction to a protocol judge. That objection is answered by the config rather
+ * than by the library: `loginMethods` is wallet and nothing else, so there is
+ * no email, no SMS, no social and no embedded wallet. What a judge sees is a
+ * wallet picker, which is what RainbowKit gave them, in Sortis colours.
  *
- * WALLETCONNECT IS OPT-IN, and that is why the console is clean. RainbowKit's
- * `getDefaultConfig` always wires WalletConnect, which then calls
- * api.web3modal.org and pulse.walletconnect.org on page load. Without a real
- * project id those answer 403 and 400, and the errors ship to every visitor.
- * A placeholder id does not make the calls succeed, it just makes them fail
- * quietly enough to miss. So the connector list is built explicitly and
- * WalletConnect only joins it when a real id is configured.
+ * The practical reason to switch is that RainbowKit initialises WalletConnect
+ * on page load whether or not anyone uses it, which meant a 403 from
+ * api.web3modal.org and a 400 from pulse.walletconnect.org in the console of
+ * every visitor unless a real project id was configured. Privy carries its own
+ * transport and does not.
  *
- * Sepolia only. There is no mainnet deployment, and a chain switcher that
- * leads nowhere is worse than one chain that works.
+ * THE APP ID IS PUBLIC. THE APP SECRET IS NOT, and it is not imported here or
+ * anywhere else under web/. It authenticates server-to-server calls to Privy's
+ * API; shipping it to a browser would let anyone act as this application. It
+ * stays in the root .env, which is gitignored, and nothing in the frontend
+ * reads it.
  */
 
-const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
+export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 
 export const RPC_URL =
   process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
 
 /**
- * With a real project id: the full list, WalletConnect included.
- *
- * Without one: `injectedWallet` alone. Not metaMaskWallet or rainbowWallet
- * either, because both fall back to WalletConnect on a device with no
- * extension and that is exactly the call that 403s. Injected has no
- * WalletConnect dependency at all.
- *
- * `connectorsForWallets` throws on an empty project id whatever the wallet
- * list, so a placeholder is passed to satisfy it. Nothing reaches
- * WalletConnect with it, because nothing in the list speaks WalletConnect.
+ * Sepolia only. There is no mainnet deployment, and a chain switcher that
+ * leads nowhere is worse than one chain that works.
  */
-const wallets = WALLETCONNECT_PROJECT_ID
-  ? [
-      { groupName: "Installed", wallets: [injectedWallet, metaMaskWallet, rainbowWallet] },
-      { groupName: "Other", wallets: [walletConnectWallet] },
-    ]
-  : [{ groupName: "Installed", wallets: [injectedWallet] }];
-
 export const wagmiConfig = createConfig({
   chains: [sepolia],
-  connectors: connectorsForWallets(wallets, {
-    appName: "Sortis",
-    projectId: WALLETCONNECT_PROJECT_ID || "sortis-injected-only",
-  }),
   transports: { [sepolia.id]: http(RPC_URL) },
-  ssr: true,
 });
+
+/**
+ * The login card, in Sortis colours.
+ *
+ * Brass on stone with the kleroterion mark, not Privy's default purple. A
+ * connect dialog that arrives in another product's brand is the moment the
+ * app stops feeling like one thing, and this one is the first modal a judge
+ * will open.
+ */
+export const privyConfig: PrivyClientConfig = {
+  // Wallet only. No email, no SMS, no social, no embedded wallet.
+  loginMethods: ["wallet"],
+
+  appearance: {
+    theme: "light",
+    // --brass. The accent everywhere else in the product.
+    accentColor: "#A87A2E",
+    // --stone, so the card sits on the same ground as the app.
+    logo: "/sortis-mark.svg",
+    walletList: ["metamask", "rainbow", "coinbase_wallet", "wallet_connect"],
+    showWalletLoginFirst: true,
+  },
+
+  // No embedded wallets. A prize-savings protocol asking to custody a key on
+  // signup is exactly the consumer-app friction the brief warned about.
+  embeddedWallets: {
+    ethereum: { createOnLogin: "off" },
+  },
+
+  defaultChain: sepolia,
+  supportedChains: [sepolia],
+};

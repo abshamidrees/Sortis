@@ -1,0 +1,14 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sortis">
+  <title>Sortis</title>
+
+  <!-- Plate: the kleroterion slab -->
+  <rect x="12" y="12" width="104" height="104" rx="8" fill="none" stroke="#1A1E1B" stroke-width="8"/>
+
+  <!-- Channel: the tube the lot descends -->
+  <rect x="30" y="30" width="10" height="68" rx="2" fill="#1A1E1B"/>
+
+  <!-- Slots: stakes in the register. Top slot is drawn. -->
+  <rect x="56" y="32" width="38" height="14" rx="2" fill="#A87A2E"/>
+  <rect x="56" y="57" width="38" height="14" rx="2" fill="#1A1E1B"/>
+  <rect x="56" y="82" width="38" height="14" rx="2" fill="#1A1E1B"/>
+</svg>

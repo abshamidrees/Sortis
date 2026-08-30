@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { usePrivy } from "@privy-io/react-auth";
 
 import { REPO_URL } from "@/lib/measurements";
 import { SortisMark } from "./SortisMark";
@@ -96,6 +97,9 @@ export function Nav({ surface }: { surface: "marketing" | "app" }) {
                 </a>
                 <Link className={styles.cta} href="/app">
                   Open the app
+                  <span className={styles.ctaArrow} aria-hidden="true">
+                    ↗
+                  </span>
                 </Link>
               </>
             )}
@@ -131,27 +135,40 @@ export function Nav({ surface }: { surface: "marketing" | "app" }) {
 }
 
 /**
- * Wallet connect, loaded only on the app surface.
+ * Wallet connect.
  *
- * RainbowKit's ConnectButton pulls the whole wagmi connector graph, so it is
- * imported lazily rather than shipped to the marketing pages that never use
- * it.
+ * Privy's own button is not used: it arrives in Privy's brand, and the nav is
+ * the one element on every screen. This renders the Sortis button and calls
+ * `login()`, so the only Privy surface a user sees is the wallet picker itself,
+ * which is themed to brass on stone in privyConfig.
+ *
+ * Connected shows a brass dot and the truncated address in IBM Plex Mono, and
+ * clicking disconnects. The dot is --brass rather than --seal on purpose:
+ * --seal means encrypted in this palette, and a connection indicator in that
+ * colour would read as a privacy state.
  */
 function WalletButton() {
-  const [Button, setButton] = useState<React.ComponentType<{ showBalance?: boolean }> | null>(null);
+  const { ready, authenticated, login, logout, user } = usePrivy();
 
-  useEffect(() => {
-    let alive = true;
-    import("@rainbow-me/rainbowkit").then((mod) => {
-      if (alive) setButton(() => mod.ConnectButton as never);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  if (!Button) {
-    return <span className={styles.shard}>Wallet</span>;
+  if (!ready) {
+    return <span className={styles.walletIdle}>wallet</span>;
   }
-  return <Button showBalance={false} />;
+
+  if (!authenticated) {
+    return (
+      <button type="button" className={styles.cta} onClick={login}>
+        Connect wallet
+      </button>
+    );
+  }
+
+  const address = user?.wallet?.address ?? "";
+  const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "connected";
+
+  return (
+    <button type="button" className={styles.walletConnected} onClick={logout} title="Disconnect">
+      <span className={styles.walletDot} aria-hidden="true" />
+      {short}
+    </button>
+  );
 }

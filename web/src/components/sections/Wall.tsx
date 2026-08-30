@@ -70,15 +70,18 @@ const DRAW_INTERCEPT = HCU.DRAW[0].depth - HCU.DRAW_PER_LEVEL * 2;
 const drawDepth = (stakes: number) =>
   DRAW_INTERCEPT + HCU.DRAW_PER_LEVEL * Math.log2(Math.max(stakes, 1));
 
-function pathFor(fn: (n: number) => number) {
+/** A curve between two stake counts, clipped at the top of the plot. */
+function pathFor(fn: (n: number) => number, until = 256, from = 1) {
   const points: string[] = [];
+  const lo = Math.log2(from);
+  const hi = Math.log2(until);
   for (let step = 0; step <= 200; step++) {
-    const stakes = 2 ** ((step / 200) * MAX_LOG2);
+    const stakes = 2 ** (lo + ((hi - lo) * step) / 200);
     const value = fn(stakes);
     if (value > MAX_HCU) break;
     points.push(`${xFor(stakes).toFixed(1)},${yFor(value).toFixed(1)}`);
   }
-  return `M ${points.join(" L ")}`;
+  return points.length ? `M ${points.join(" L ")}` : "";
 }
 
 const Y_GRID = [1, 2, 3, 4, 5, 6].map((m) => m * 1_000_000);
@@ -106,6 +109,13 @@ export function Wall() {
             chain per level in the budget rather than one per person. Both curves are a complete
             draw, not a fragment of one.
           </p>
+          <p className={styles.standfirst} style={{ marginTop: "var(--s-4)" }}>
+            The two failures are not the same failure. A linear scan is one dependent chain, so at
+            thirty depositors it is finished and no amount of splitting helps. A Sortis shard holds{" "}
+            {HCU.SHARD_CEILING} and then a second shard opens. The dashed continuation is what one
+            oversized shard would cost, and it is drawn only to show why the ceiling is where it
+            is.
+          </p>
         </div>
 
         <div className={styles.chartScroll}>
@@ -113,7 +123,7 @@ export function Wall() {
             className={styles.chart}
             viewBox={`0 0 ${W} ${H}`}
             role="img"
-            aria-label={`Sequential HCU against stake count. A linear scan crosses the 5,000,000 limit at ${LINEAR_SCAN_WALL} depositors. The Sortis walk crosses at ${firstFail.stakes} stakes, and a shard is capped at ${ceiling.stakes}, the last power of two underneath.`}
+            aria-label={`Sequential HCU against stake count, for a complete draw. A linear scan crosses the 5,000,000 limit at ${LINEAR_SCAN_WALL} depositors and cannot be split. A Sortis shard is capped at ${ceiling.stakes} stakes at ${ceiling.depth.toLocaleString("en-US")} HCU, and scale comes from opening another shard rather than from a larger tree.`}
           >
             <text
               transform={`translate(20 ${(PLOT.top + PLOT.bottom) / 2}) rotate(-90)`}
@@ -187,7 +197,7 @@ export function Wall() {
             />
             <text
               x={PLOT.left + 8}
-              y={yFor(HCU.DEPTH_LIMIT) - 9}
+              y={yFor(HCU.DEPTH_LIMIT) + 18}
               fill="var(--fault)"
               fontFamily="var(--font-data)"
               fontSize="11"
@@ -195,23 +205,33 @@ export function Wall() {
               5,000,000 HCU. Transaction reverts here.
             </text>
 
-            {/* Each curve labelled at its own endpoint, in its own colour. */}
+            {/* Linear scan. Climbs out of the top of the plot and never
+                comes back. */}
             <path d={pathFor(linearDepth)} fill="none" stroke="var(--fault)" strokeWidth="2" />
-            <text
-              x={xFor(LINEAR_EXIT) + 10}
-              y={PLOT.top + 34}
-              fill="var(--fault)"
-              fontFamily="var(--font-data)"
-              fontSize="11"
-            >
-              Linear scan. Reverts at {LINEAR_SCAN_WALL}.
-            </text>
 
-            <path d={pathFor(drawDepth)} fill="none" stroke="var(--gleam)" strokeWidth="2" />
-            {/* Both curves leave the top of the plot, so both labels live up
-                there. They are separated vertically and anchored to opposite
-                edges, because side by side at the same height is exactly how
-                the previous version became unreadable. */}
+            {/* Sortis. SOLID to the shard ceiling, dashed past it.
+                The dash is the whole point. Beyond 32 stakes this is not what
+                Sortis does, it is what one oversized shard would cost, and
+                drawing it solid made the line look like a failure the protocol
+                actually walks into. */}
+            <path
+              d={pathFor(drawDepth, ceiling.stakes)}
+              fill="none"
+              stroke="var(--gleam)"
+              strokeWidth="2.5"
+            />
+            <path
+              d={pathFor(drawDepth, 256, ceiling.stakes)}
+              fill="none"
+              stroke="var(--gleam)"
+              strokeWidth="1.5"
+              strokeDasharray="3 4"
+              opacity="0.45"
+            />
+
+            {/* Both labels right-aligned and stacked. Side by side at the same
+                height, with one of them long enough to run off the plot, is
+                exactly how this became unreadable. */}
             <text
               x={PLOT.right}
               y={PLOT.top + 12}
@@ -220,9 +240,18 @@ export function Wall() {
               fontFamily="var(--font-data)"
               fontSize="11"
             >
-              Sortis. Reverts at {firstFail.stakes}.
+              Sortis. {ceiling.stakes} per shard, then another opens.
             </text>
-
+            <text
+              x={PLOT.right}
+              y={PLOT.top + 30}
+              textAnchor="end"
+              fill="var(--fault)"
+              fontFamily="var(--font-data)"
+              fontSize="11"
+            >
+              Linear scan. Dead at {LINEAR_SCAN_WALL}, and cannot be split.
+            </text>
             {fits.map((row) => (
               <circle
                 key={row.stakes}
@@ -260,7 +289,7 @@ export function Wall() {
               fontFamily="var(--font-data)"
               fontSize="11"
             >
-              one shard
+              {ceiling.stakes} per shard
             </text>
 
             <line
@@ -289,7 +318,7 @@ export function Wall() {
           </span>
           <span className={styles.legendItem}>
             <span className={styles.legendSwatch} style={{ background: "var(--gleam)" }} />
-            Sortis, one encrypted descent per tree level
+            Sortis, one encrypted descent per level. Dashed past the shard ceiling.
           </span>
         </div>
 

@@ -257,7 +257,30 @@ async function readDraw(id: bigint): Promise<DrawRow> {
       return out;
     }
 
-    /** Everything the stat strip shows, in one round of reads. */
+    /**
+ * The Drawn event for one draw, through the chunker.
+ *
+ * Exported because Verify needs it. It used to call `publicClient.getLogs`
+ * directly with an unbounded range, which is exactly the query the provider
+ * rejects: "range 17850 exceeds limit of 10000". The chunker existed by then
+ * and this call site simply was not moved onto it, so Verify failed in
+ * production while every other log query on the site worked.
+ */
+export async function readDrawnEvent(
+  drawId: bigint,
+): Promise<{ lot: `0x${string}`; block: bigint } | null> {
+  const head = await publicClient.getBlockNumber();
+  const logs = await getLogsChunked<{
+    args: { lotHandle?: `0x${string}` };
+    blockNumber: bigint | null;
+  }>({ address: DRAW, event: EV_DRAWN, args: { drawId } }, DEPLOY_BLOCK, head);
+
+  const log = logs[0];
+  if (!log?.args?.lotHandle || log.blockNumber === null) return null;
+  return { lot: log.args.lotHandle, block: log.blockNumber };
+}
+
+/** Everything the stat strip shows, in one round of reads. */
     export async function readShardState(): Promise<ShardState> {
       const [depth, capacity, leafCount, activeHeight, hour, drawCount, blockNumber] = await resilientRead(
         () =>

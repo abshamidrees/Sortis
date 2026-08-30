@@ -8,7 +8,7 @@
   overflow: hidden;
   max-width: 100vw;
   position: sticky;
-  top: 64px;
+  top: 72px;
   z-index: 40;
   height: 56px;
   background: var(--slab);

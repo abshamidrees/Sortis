@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 
 import { AppShell } from "@/components/chrome/AppShell";
 import { ETHERSCAN } from "@/lib/measurements";
-import { CONFIGURED, DEPLOY_BLOCK, DRAW, publicClient, truncate } from "@/lib/chain";
+import { CONFIGURED, DRAW, publicClient, readDrawnEvent, truncate } from "@/lib/chain";
 import { DRAW_ABI } from "@/lib/abi";
 import shell from "@/components/chrome/AppShell.module.css";
 
@@ -75,25 +75,9 @@ function VerifyBody() {
           );
         }
 
-        const drawnLogs = await publicClient.getLogs({
-          address: DRAW,
-          event: {
-            type: "event",
-            name: "Drawn",
-            inputs: [
-              { name: "drawId", type: "uint256", indexed: true },
-              { name: "lotHandle", type: "bytes32", indexed: false },
-              { name: "resolvedLeafHandle", type: "bytes32", indexed: false },
-              { name: "totalWeight", type: "uint64", indexed: false },
-            ],
-          },
-          args: { drawId: n },
-          fromBlock: DEPLOY_BLOCK,
-          toBlock: "latest",
-        });
-        const drawn = drawnLogs[0];
-        const drawnBlock = drawn?.blockNumber ?? null;
-        const lotHandle = (drawn?.args as { lotHandle?: `0x${string}` })?.lotHandle ?? null;
+        const drawn = await readDrawnEvent(n);
+        const drawnBlock = drawn?.block ?? null;
+        const lotHandle = drawn?.lot ?? null;
 
         const zero = `0x${"0".repeat(64)}`;
 

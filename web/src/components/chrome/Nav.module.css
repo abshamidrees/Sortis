@@ -1,36 +1,39 @@
-/* Top nav, both surfaces. Fixed, 64px, blurred stone.
-   Brief v2 section 2. */
+/* Top nav.
+   Elements float on the page ground as pills rather than sitting in a
+   full-bleed bar with a hairline under it. The centre links get their own
+   raised container, which is what stops a light nav on a light ground from
+   reading as unfinished. */
 
 .nav {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 64px;
+  height: 72px;
   z-index: 50;
-  background: color-mix(in srgb, var(--stone) 92%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  /* The hairline appears only once the page has scrolled, so the nav sits on
-     an unbroken ground at the top and separates itself once there is
-     something to separate from. Nothing else changes: no shrinking, no
-     colour shift. */
-  border-bottom: 1px solid transparent;
-  transition: border-color 120ms var(--ease-step);
+  display: flex;
+  align-items: center;
+  /* Transparent at rest. The nav is a set of floating objects, not a bar. */
+  background: transparent;
+  transition: background 160ms var(--ease-step);
 }
 
+/* Once the page has scrolled there is content underneath, so the ground comes
+   back to keep the pills legible. Nothing else changes: no shrinking, no
+   colour shift, no border. */
 .nav[data-scrolled="true"] {
-  border-bottom-color: var(--rule);
+  background: var(--stone);
+  border-bottom: var(--hairline);
 }
 
 .inner {
-  height: 100%;
-  max-width: 1120px;
+  width: 100%;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 0 var(--s-5);
   display: flex;
   align-items: center;
-  gap: var(--s-5);
+  gap: var(--s-4);
 }
 
 @media (min-width: 900px) {
@@ -47,18 +50,19 @@
   gap: var(--s-3);
   text-decoration: none;
   flex: none;
+  color: var(--ink);
 }
 
 .mark {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   display: block;
 }
 
 .wordmark {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 17px;
+  font-size: 18px;
   letter-spacing: -0.02em;
   color: var(--ink);
 }
@@ -79,14 +83,20 @@
 
 /* ----------------------------------------------------------------- centre */
 
+/* The links live inside a raised pill. This is the one device that makes a
+   light nav on a light ground read as deliberate rather than as unstyled. */
 .links {
   display: none;
   align-items: center;
-  gap: var(--s-5);
+  gap: var(--s-1);
   margin: 0 auto;
+  padding: 5px;
+  background: var(--chalk);
+  border: var(--hairline);
+  border-radius: 999px;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 860px) {
   .links {
     display: flex;
   }
@@ -98,18 +108,23 @@
   font-size: 14px;
   color: var(--graphite);
   text-decoration: none;
-  transition: color 120ms var(--ease-step);
-  padding: var(--s-2) 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+  transition:
+    color 120ms var(--ease-step),
+    background 120ms var(--ease-step);
 }
 
 .link:hover {
   color: var(--ink);
 }
 
-/* App tabs carry an active state. Marketing links never do. */
+/* App tabs carry an active state. Inside a pill an underline reads as a stray
+   rule, so the active tab is a filled chip instead. */
 .link[data-active="true"] {
   color: var(--ink);
-  border-bottom: 2px solid var(--brass);
+  background: var(--brass-wash);
 }
 
 /* ------------------------------------------------------------------ right */
@@ -119,22 +134,8 @@
   align-items: center;
   gap: var(--s-3);
   margin-left: auto;
-  /* Must be able to shrink. The wallet button is rendered by RainbowKit and
-     sizes itself, and on a 390px screen it was wide enough to push the menu
-     control off the edge entirely. */
+  flex: none;
   min-width: 0;
-}
-
-/* The menu control comes first on small screens so it can never be the thing
-   that gets pushed out. */
-.right > .burger {
-  order: -1;
-}
-
-.walletSlot {
-  min-width: 0;
-  overflow: hidden;
-  display: flex;
 }
 
 .repo {
@@ -143,6 +144,7 @@
   font-size: 14px;
   color: var(--graphite);
   text-decoration: none;
+  padding: 7px 4px;
   transition: color 120ms var(--ease-step);
 }
 
@@ -150,7 +152,7 @@
   color: var(--ink);
 }
 
-@media (min-width: 900px) {
+@media (min-width: 1040px) {
   .repo {
     display: inline;
   }
@@ -159,21 +161,69 @@
 .cta {
   display: inline-flex;
   align-items: center;
+  gap: var(--s-2);
   background: var(--brass);
   color: var(--stone);
   font-family: var(--font-body);
   font-weight: 600;
   font-size: 14px;
   text-decoration: none;
-  padding: 8px 16px;
-  border-radius: var(--r-card);
-  transition: background 120ms var(--ease-step);
+  border: none;
+  padding: 10px 18px;
+  border-radius: 999px;
+  cursor: pointer;
   white-space: nowrap;
+  transition: background 120ms var(--ease-step);
 }
 
 .cta:hover {
   background: var(--gleam);
   color: var(--ink);
+}
+
+.ctaArrow {
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* ----------------------------------------------------------------- wallet */
+
+.walletIdle {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--graphite);
+  white-space: nowrap;
+}
+
+/* Connected. Truncated address in mono with a brass dot.
+   Brass rather than --seal: --seal means encrypted in this palette, and a
+   connection indicator in that colour would read as a privacy state. */
+.walletConnected {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-data);
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--chalk);
+  border: var(--hairline);
+  border-radius: 999px;
+  padding: 9px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 120ms var(--ease-step);
+}
+
+.walletConnected:hover {
+  border-color: var(--graphite);
+}
+
+.walletDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brass);
+  flex: none;
 }
 
 /* ----------------------------------------------------------------- mobile */
@@ -183,15 +233,17 @@
   flex-direction: column;
   justify-content: center;
   gap: 5px;
-  width: 32px;
-  height: 32px;
-  padding: 0 6px;
-  background: none;
-  border: none;
+  width: 38px;
+  height: 38px;
+  padding: 0 9px;
+  background: var(--chalk);
+  border: var(--hairline);
+  border-radius: 999px;
   cursor: pointer;
+  flex: none;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 860px) {
   .burger {
     display: none;
   }
@@ -206,27 +258,34 @@
 
 .sheet {
   position: fixed;
-  top: 64px;
-  left: 0;
-  right: 0;
-  background: var(--stone);
-  border-bottom: var(--hairline);
-  padding: var(--s-4) var(--s-5) var(--s-6);
+  top: 72px;
+  left: var(--s-4);
+  right: var(--s-4);
+  background: var(--chalk);
+  border: var(--hairline);
+  border-radius: var(--r-card);
+  padding: var(--s-4);
   display: flex;
   flex-direction: column;
-  gap: var(--s-4);
+  gap: var(--s-1);
   z-index: 49;
 }
 
 .sheet a {
   font-family: var(--font-body);
   font-weight: 500;
-  font-size: 16px;
+  font-size: 15px;
   color: var(--ink);
   text-decoration: none;
+  padding: 10px 12px;
+  border-radius: var(--r-slot);
+}
+
+.sheet a:hover {
+  background: var(--brass-wash);
 }
 
 /* The nav is fixed, so every page needs the height back. */
 .spacer {
-  height: 64px;
+  height: 72px;
 }

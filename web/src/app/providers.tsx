@@ -1,39 +1,40 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { WagmiProvider } from "wagmi";
-import { RainbowKitProvider, lightTheme } from "@rainbow-me/rainbowkit";
+import { PrivyProvider } from "@privy-io/react-auth";
+import { WagmiProvider } from "@privy-io/wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import { wagmiConfig } from "@/lib/wagmi";
-
-import "@rainbow-me/rainbowkit/styles.css";
+import { PRIVY_APP_ID, privyConfig, wagmiConfig } from "@/lib/wagmi";
 
 /**
  * Wallet and query providers.
  *
- * RainbowKit is themed down to the Sortis palette rather than left on its
- * defaults. Its stock accent is a saturated blue that collides with --seal,
- * which in this product means "encrypted" -- a connect button in that colour
- * would be reading as a privacy state to anyone who had learned the palette.
+ * WagmiProvider comes from @privy-io/wagmi rather than from wagmi itself. It
+ * is the same provider with Privy's connector bridged in, so every existing
+ * `useAccount`, `useWriteContract` and `useSignTypedData` call keeps working
+ * untouched: the register screen did not change at all for this.
+ *
+ * If the app id is missing the tree still renders. A landing page that throws
+ * because a wallet provider is unconfigured is worse than one that shows a
+ * connect button which cannot connect, and the app routes say so plainly.
  */
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
 
+  if (!PRIVY_APP_ID) {
+    return (
+      <WagmiProvider config={wagmiConfig}>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </WagmiProvider>
+    );
+  }
+
   return (
-    <WagmiProvider config={wagmiConfig}>
+    <PrivyProvider appId={PRIVY_APP_ID} config={privyConfig}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider
-          theme={lightTheme({
-            accentColor: "#A87A2E",
-            accentColorForeground: "#FBFCFA",
-            borderRadius: "small",
-            fontStack: "system",
-          })}
-        >
-          {children}
-        </RainbowKitProvider>
+        <WagmiProvider config={wagmiConfig}>{children}</WagmiProvider>
       </QueryClientProvider>
-    </WagmiProvider>
+    </PrivyProvider>
   );
 }
