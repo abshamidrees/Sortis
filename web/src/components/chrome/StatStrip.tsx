@@ -34,9 +34,71 @@ type Cell = {
   dot?: "ok" | "fail";
 };
 
+/**
+ * Where the last reading is kept between routes.
+ *
+ * Only three requests reach the RPC per load, so this screen is latency bound
+ * rather than request bound: from here a Sepolia round trip is seconds, and
+ * clicking Register, Draw, Verify repainted every cell to "reading" each time.
+ * The last reading is shown immediately and refreshed underneath, so moving
+ * between routes stops looking like a reload.
+ *
+ * sessionStorage, not localStorage: this is a convenience within one visit,
+ * not state worth carrying across them, and a stale pot from yesterday is
+ * worse than none.
+ */
+const CACHE_KEY = "sortis.shard";
+
+function readCache(): ShardState | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    // BigInt does not survive JSON, so the numeric fields are revived here.
+    const p = JSON.parse(raw);
+    return {
+      ...p,
+      hour: BigInt(p.hour ?? 0),
+      pot: BigInt(p.pot ?? 0),
+      drawCount: BigInt(p.drawCount ?? 0),
+      blockNumber: BigInt(p.blockNumber ?? 0),
+      current: p.current
+        ? {
+            ...p.current,
+            id: BigInt(p.current.id),
+            openedAtBlock: BigInt(p.current.openedAtBlock),
+            prize: BigInt(p.current.prize),
+            totalWeight: BigInt(p.current.totalWeight),
+            refHour: BigInt(p.current.refHour ?? 0),
+            drawnAtBlock: p.current.drawnAtBlock ? BigInt(p.current.drawnAtBlock) : null,
+          }
+        : null,
+    } as ShardState;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(state: ShardState): void {
+  try {
+    sessionStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify(state, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    );
+  } catch {
+    // A private window refuses storage. The strip still works, it just
+    // repaints on navigation.
+  }
+}
+
 export function StatStrip() {
   const [state, setState] = useState<ShardState | null>(null);
   const [rpcOk, setRpcOk] = useState(true);
+
+  // Paint the last reading before the first request goes out.
+  useEffect(() => {
+    const cached = readCache();
+    if (cached) setState(cached);
+  }, []);
 
   useEffect(() => {
     if (!CONFIGURED) return;
@@ -47,6 +109,7 @@ export function StatStrip() {
         const next = await readShardState();
         if (alive) {
           setState(next);
+          writeCache(next);
           setRpcOk(true);
         }
       } catch {

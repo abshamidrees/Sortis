@@ -10,6 +10,7 @@ import type { Slot } from "@/lib/chain";
 import {
   CONFIGURED,
   readDrawHistory,
+  readDrawnEvent,
   readShardState,
   readSlotHandles,
   truncate,
@@ -67,6 +68,24 @@ export function DrawScreen() {
         const next = await readShardState();
         if (!alive) return;
         setState(next);
+
+        // The lot handle comes from the Drawn event and is rendered only here,
+        // so it is fetched here rather than by the stat strip, which paid for
+        // a log scan on every poll of every route to carry a value it never
+        // showed.
+        if (next.current) {
+          void readDrawnEvent(next.current.id).then((drawn) => {
+            if (!alive || !drawn) return;
+            setState((prev) =>
+              prev?.current
+                ? {
+                    ...prev,
+                    current: { ...prev.current, lotHandle: drawn.lot, drawnAtBlock: drawn.block },
+                  }
+                : prev,
+            );
+          });
+        }
 
         const [rows, handles] = await Promise.all([
           next.drawCount > 0n ? readDrawHistory(next.drawCount) : Promise.resolve([]),

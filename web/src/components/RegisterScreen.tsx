@@ -141,7 +141,15 @@ export function RegisterScreen() {
   const { progress, encryptAmount, userDecrypt } = useFhevm();
 
   const [position, setPosition] = useState<Position | null>(null);
-  const [activity, setActivity] = useState<ActivityRow[]>([]);
+  /**
+   * null means "not read yet", not "empty".
+   *
+   * Rendering the empty state while the log scan is still running tells the
+   * user they have no commits, which is a claim the app cannot make until the
+   * query returns. Now that activity loads independently of the position, that
+   * window is visible rather than hidden behind a slower await.
+   */
+  const [activity, setActivity] = useState<ActivityRow[] | null>(null);
   const [stakeClear, setStakeClear] = useState<bigint | null>(null);
   const [walletClear, setWalletClear] = useState<bigint | null>(null);
   const [decrypting, setDecrypting] = useState<"stake" | "wallet" | null>(null);
@@ -155,9 +163,18 @@ export function RegisterScreen() {
   const refresh = useCallback(async () => {
     if (!address || !CONFIGURED) return;
     try {
-      const [pos, acts] = await Promise.all([readPosition(address), readActivity(address)]);
-      setPosition(pos);
-      setActivity(acts);
+      /*
+        Independently, not as one Promise.all.
+
+        The position is a handful of contract reads and lands quickly. The
+        activity is a log scan across every window since deployment and is much
+        slower. Awaiting both together meant the screen showed nothing until
+        the slower one finished, which is what made this route look broken.
+      */
+      void readPosition(address).then((pos) => setPosition(pos));
+      void readActivity(address)
+        .then((acts) => setActivity(acts))
+        .catch(() => setActivity([]));
     } catch {
       // A read failure leaves the last known state on screen rather than
       // blanking a page the user is mid-way through using.
@@ -368,7 +385,7 @@ export function RegisterScreen() {
                 data-active={tab === t}
                 onClick={() => setTab(t)}
               >
-                {t === "position" ? "Position" : `Activity (${activity.length})`}
+                {t === "position" ? "Position" : `Activity${activity === null ? "" : ` (${activity.length})`}`}
               </button>
             ))}
           </div>
@@ -467,10 +484,14 @@ export function RegisterScreen() {
           <section className={shell.panel} style={{ display: tab === "activity" ? undefined : "none" }}>
             <div className={shell.panelHead}>
               <span className={shell.panelLabel}>Your activity</span>
-              <span className={shell.panelMeta}>{activity.length} events</span>
+              <span className={shell.panelMeta}>
+                {activity === null ? "reading" : `${activity.length} events`}
+              </span>
             </div>
             <div className={`${shell.panelBodyFlush} ${shell.feed}`}>
-              {activity.length ? (
+              {activity === null ? (
+                <p className={shell.empty}>Reading this address from chain.</p>
+              ) : activity.length ? (
                 <table className={shell.table}>
                   <thead>
                     <tr>

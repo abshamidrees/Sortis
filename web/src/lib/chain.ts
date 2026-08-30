@@ -296,13 +296,18 @@ export async function readDrawnEvent(
   );
 
   const count = drawCount as bigint;
-  let current = count > 0n ? await readDraw(count) : null;
-  if (current) {
-    // Enrichment only. If the log is unavailable the draw keeps the status its
-    // own state gave it.
-    const drawn = (await readDrawnEvents()).get(current.id.toString());
-    if (drawn) current = { ...current, lotHandle: drawn.lot, drawnAtBlock: drawn.block };
-  }
+  /*
+    NO LOG SCAN HERE.
+
+    This used to enrich `current` with the lot handle from the Drawn event,
+    which meant a chunked getLogs across every window since deployment on every
+    strip poll, on every app route, forever. The strip does not render the lot
+    handle. Only the draw route does, and it fetches its own.
+
+    That scan was why /app/register still read "reading" after sixteen seconds
+    while competing with the position and activity queries.
+  */
+  const current = count > 0n ? await readDraw(count) : null;
 
   // The pot is what the draw contract already holds plus what has accrued but
   // not been harvested. Both are public: the prize size is not a secret, only
@@ -524,18 +529,17 @@ export async function readActivity(account: Address): Promise<ActivityRow[]> {
     blockNumber: bigint | null;
     transactionHash: `0x${string}` | null;
   };
-  const [committed, released] = await Promise.all([
-    getLogsChunked<PoolLog>(
-      { address: POOL, event: EV_COMMITTED, args: { owner: account } },
-      DEPLOY_BLOCK,
-      head,
-    ),
-    getLogsChunked<PoolLog>(
-      { address: POOL, event: EV_RELEASED, args: { owner: account } },
-      DEPLOY_BLOCK,
-      head,
-    ),
-  ]);
+  // Both events in ONE pass. Committed and Released share their indexed
+  // signature, so a single filter matches both and halves the number of
+  // windows the provider has to serve.
+  const logs = await getLogsChunked<PoolLog & { eventName?: string }>(
+    { address: POOL, events: [EV_COMMITTED, EV_RELEASED], args: { owner: account } },
+    DEPLOY_BLOCK,
+    head,
+  );
+
+  const committed = logs.filter((l) => l.eventName === "Committed");
+  const released = logs.filter((l) => l.eventName === "Released");
 
   const rows: ActivityRow[] = [
     ...committed.map((l) => ({
