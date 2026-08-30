@@ -27,6 +27,11 @@ export type DrawColumnProps = {
   levels?: number;
   /** Ciphertext handles, one per slot. Generated if omitted. */
   handles?: string[];
+  /**
+   * A secondary value per slot, rendered right of the handle in --graphite.
+   * Used for hours held, which is what the weight line is computed from.
+   */
+  meta?: string[];
   /** Which slot is drawn. Derived from the seed if omitted. */
   resolvedIndex?: number;
   /** Restart after settling. Used by the landing hero. */
@@ -85,6 +90,7 @@ function makeHandle(rand: () => number, short: boolean): string {
 export function DrawColumn({
   levels = 6,
   handles,
+  meta,
   resolvedIndex,
   loop = false,
   autoPlay = true,
@@ -263,13 +269,29 @@ export function DrawColumn({
         <div className={styles.slots} data-columns={columns}>
           {slotHandles.map((handle, i) => {
             const isDrawn = resolved && i === winner;
+            /*
+              With live data no slot may be singled out at all.
+
+              The winner index is derived from a seed, because the real one is
+              an encrypted euint16 nobody holds a grant on. Outlining that
+              seeded index put a selection box around slot 17, which is empty:
+              the walk appeared to land on a stake that does not exist. An
+              outline is a weaker claim than a fill but it is still a claim,
+              and it was false.
+
+              So when revealWinner is off the resolved frame returns every slot
+              to sealed. A walk happened, the register is encrypted, and which
+              slot it chose is not something this page knows.
+            */
             const state = isDrawn
               ? revealWinner
                 ? "drawn"
-                : "landed"
-              : i >= surviving.lo && i < surviving.hi
+                : "sealed"
+              : resolved && !revealWinner
                 ? "sealed"
-                : "eliminated";
+                : i >= surviving.lo && i < surviving.hi
+                  ? "sealed"
+                  : "eliminated";
             return (
               <div
                 key={i}
@@ -282,6 +304,11 @@ export function DrawColumn({
                     shows the value beside it rather than replacing it, so the
                     encrypted identity of the row is never lost. */}
                 <span className={styles.slotHandle}>{handle}</span>
+                {/* Hours held. A time-scoped position states its age beside its
+                    identity, and this is the number the weight line is built
+                    from: a slot showing only a handle hides what decides the
+                    draw. */}
+                {meta?.[i] ? <span className={styles.slotMeta}>{meta[i]}</span> : null}
                 {isDrawn && revealWinner && revealed ? (
                   <span className={styles.slotRevealed}>{revealed}</span>
                 ) : null}

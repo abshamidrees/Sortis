@@ -3,6 +3,11 @@
    frame. */
 
 .main {
+  /* Nothing under /app may drag the page sideways. The one element that
+     scrolls horizontally on purpose is the stat strip, which is a sibling of
+     this element and contains itself. `clip` rather than `hidden` so this does
+     not become a scroll container and break the sticky strip above it. */
+  overflow-x: clip;
   max-width: 1440px;
   margin: 0 auto;
   padding: var(--s-5) var(--s-5) var(--s-8);
@@ -31,6 +36,16 @@
   border: var(--hairline);
   border-radius: var(--r-card);
   background: var(--slab);
+  min-width: 0;
+}
+
+/* Grid and flex children default to min-width:auto, which refuses to shrink
+   below their content and pushes the page sideways instead of wrapping. Every
+   container that holds a table or a key-value grid has to opt out. */
+.panelBody,
+.panelBodyFlush,
+.kv,
+.split {
   min-width: 0;
 }
 
@@ -84,16 +99,35 @@
   white-space: nowrap;
 }
 
+/* A secondary fact sitting beside a value: hours held, share of the shard.
+   Graphite and smaller, so it never competes with the value it qualifies. */
+.kvAside {
+  font-size: 0.6875rem;
+  color: var(--graphite);
+  /* Wraps. It is a qualifying phrase, not a figure, and holding it on one line
+     pushed a 284px span past the edge of a 390px viewport. The value it
+     qualifies keeps its nowrap; this does not need it. */
+  white-space: normal;
+  min-width: 0;
+}
+
 .kvValue {
   font-family: var(--font-data);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--s-3);
   min-width: 0;
-  overflow-wrap: anywhere;
+  /* Wrap between the value and whatever qualifies it, never inside a number.
+     `overflow-wrap: anywhere` broke 4,476,000 across five lines one character
+     at a time. */
+  flex-wrap: wrap;
+}
+
+.kvValue > :first-child {
+  white-space: nowrap;
 }
 
 /* -------------------------------------------------------------------- table */
@@ -104,6 +138,37 @@
   font-family: var(--font-data);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/* A table that scrolls sideways to show four fields reads as broken. In the
+   40% column of the draw split there is roughly 470px to work with, so the
+   layout is fixed, the padding is tighter than the page default, and the
+   handle columns are allowed to clip rather than to push. */
+/* A table of sentences rather than of figures. Data cells are nowrap so
+   columns of numbers stay aligned, which is wrong for prose: at 390px a
+   nowrap sentence pushes the page sideways. */
+.tableWrap {
+  /* Fixed, so the columns honour their declared widths instead of growing to
+     fit the longest sentence and dragging the page sideways. */
+  table-layout: fixed;
+  width: 100%;
+}
+
+.tableWrap td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tableTight {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.tableTight th,
+.tableTight td {
+  padding: var(--s-2) var(--s-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .table th {
@@ -356,6 +421,9 @@
   font-size: 11px;
   color: var(--graphite);
   margin: var(--s-3) 0 0;
+  /* Error text can carry an unbroken RPC URL or a hex payload with no space to
+     break at. Without this one long token pushed a 390px page out to 1255. */
+  overflow-wrap: anywhere;
 }
 
 .fault {
@@ -399,3 +467,4 @@
   color: var(--seal);
   margin: var(--s-3) 0 0;
 }
+

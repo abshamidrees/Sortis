@@ -1,6 +1,12 @@
 /* Stat strip. 56px, full width, directly under the nav, on every app route. */
 
 .strip {
+  /* Contain the row. The cells are wider than a phone on purpose and the
+     inner element scrolls them, but without this the overflow escapes and
+     drags the whole PAGE sideways, which reads as a broken layout rather than
+     as a scrollable strip. */
+  overflow: hidden;
+  max-width: 100vw;
   position: sticky;
   top: 64px;
   z-index: 40;

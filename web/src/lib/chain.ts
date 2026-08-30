@@ -31,10 +31,49 @@ const EV_RELEASED = parseAbiItem("event Released(address indexed owner, uint256 
  * requiring a wallet to perform it would contradict the claim.
  */
 
+/**
+ * One client, batching hard.
+ *
+ * These pages read a lot of small values: seven for the stat strip, two per
+ * register slot, several per draw. Sent individually that is dozens of
+ * eth_calls per page load plus more on every poll, and a free Infura tier
+ * answers that with 429.
+ *
+ * `multicall` collapses them into a single aggregate call, and `batch` on the
+ * transport packs whatever is left into one HTTP request. The reads are the
+ * same; the request count is not.
+ */
 export const publicClient = createPublicClient({
   chain: sepolia,
-  transport: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ?? RPC_FALLBACK),
+  transport: http(process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ?? RPC_FALLBACK, {
+    batch: { wait: 24 },
+    retryCount: 3,
+    retryDelay: 400,
+  }),
+  batch: { multicall: { wait: 24 } },
 });
+
+/**
+ * Retry a read that failed for transport reasons.
+ *
+ * These pages fire reads in parallel bursts, and a throttled provider answers
+ * some and drops others with "missing response for request". That is a dropped
+ * packet, not a missing function: the same call succeeds a moment later. One
+ * dropped read used to blank the stat strip and put "Chain unreachable" under
+ * a register that was perfectly reachable.
+ */
+export async function resilientRead<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      last = error;
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  throw last;
+}
 
 export const POOL = ADDRESSES.pool as Address;
 export const DRAW = ADDRESSES.draw as Address;
@@ -165,70 +204,73 @@ export type DrawRow = {
 
 async function readDraw(id: bigint): Promise<DrawRow> {
   const [info, resolved] = await Promise.all([
-    publicClient.readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawInfo", args: [id] }),
-    publicClient.readContract({
-      address: DRAW,
-      abi: DRAW_ABI,
-      functionName: "resolvedLeafHandle",
-      args: [id],
-    }),
-  ]);
-  const [rootHandle, openedAtBlock, prize, totalWeight, walkHeight, lotDrawn, refHour] =
-    info as readonly [`0x${string}`, bigint, bigint, bigint, number, boolean, bigint];
-  return {
-    id,
-    rootHandle,
-    openedAtBlock,
-    prize,
-    totalWeight,
-    walkHeight,
-    lotDrawn,
-    refHour,
-    resolvedLeaf: resolved as `0x${string}`,
-    status: lotDrawn ? "drawn" : "open",
-    lotHandle: null,
-    drawnAtBlock: null,
-  };
-}
-
-/**
- * The Drawn events, keyed by draw id.
- *
- * The lot and the resolved leaf are published as HANDLES. Publishing them is
- * what makes the walk auditable, and it costs nothing because they decrypt for
- * nobody without a grant, and no grant is issued for either.
- */
-async function readDrawnEvents(): Promise<Map<string, { lot: `0x${string}`; block: bigint }>> {
-  const out = new Map<string, { lot: `0x${string}`; block: bigint }>();
-  try {
-    const head = await publicClient.getBlockNumber();
-    const logs = await getLogsChunked<{
-      args: { drawId?: bigint; lotHandle?: `0x${string}` };
-      blockNumber: bigint | null;
-    }>({ address: DRAW, event: EV_DRAWN }, DEPLOY_BLOCK, head);
-    for (const log of logs) {
-      if (log.args.drawId !== undefined && log.args.lotHandle !== undefined) {
-        out.set(log.args.drawId.toString(), { lot: log.args.lotHandle, block: log.blockNumber! });
-      }
+        publicClient.readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawInfo", args: [id] }),
+        publicClient.readContract({
+          address: DRAW,
+          abi: DRAW_ABI,
+          functionName: "resolvedLeafHandle",
+          args: [id],
+        }),
+      ]);
+      const [rootHandle, openedAtBlock, prize, totalWeight, walkHeight, lotDrawn, refHour] =
+        info as readonly [`0x${string}`, bigint, bigint, bigint, number, boolean, bigint];
+      return {
+        id,
+        rootHandle,
+        openedAtBlock,
+        prize,
+        totalWeight,
+        walkHeight,
+        lotDrawn,
+        refHour,
+        resolvedLeaf: resolved as `0x${string}`,
+        status: lotDrawn ? "drawn" : "open",
+        lotHandle: null,
+        drawnAtBlock: null,
+      };
     }
-  } catch {
-    // A node that will not serve a full log range is not a reason to fail the
-    // whole page. The handles are supplementary; drawInfo carries the rest.
-  }
-  return out;
-}
 
-/** Everything the stat strip shows, in one round of reads. */
-export async function readShardState(): Promise<ShardState> {
-  const [depth, capacity, leafCount, activeHeight, hour, drawCount, blockNumber] = await Promise.all([
-    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "DEPTH" }),
-    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "capacity" }),
-    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "leafCount" }),
-    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "activeHeight" }),
-    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "timeUnitsNow" }),
-    publicClient.readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawCount" }),
-    publicClient.getBlockNumber(),
-  ]);
+    /**
+     * The Drawn events, keyed by draw id.
+     *
+     * The lot and the resolved leaf are published as HANDLES. Publishing them is
+     * what makes the walk auditable, and it costs nothing because they decrypt for
+     * nobody without a grant, and no grant is issued for either.
+     */
+    async function readDrawnEvents(): Promise<Map<string, { lot: `0x${string}`; block: bigint }>> {
+      const out = new Map<string, { lot: `0x${string}`; block: bigint }>();
+      try {
+        const head = await publicClient.getBlockNumber();
+        const logs = await getLogsChunked<{
+          args: { drawId?: bigint; lotHandle?: `0x${string}` };
+          blockNumber: bigint | null;
+        }>({ address: DRAW, event: EV_DRAWN }, DEPLOY_BLOCK, head);
+        for (const log of logs) {
+          if (log.args.drawId !== undefined && log.args.lotHandle !== undefined) {
+            out.set(log.args.drawId.toString(), { lot: log.args.lotHandle, block: log.blockNumber! });
+          }
+        }
+      } catch {
+        // A node that will not serve a full log range is not a reason to fail the
+        // whole page. The handles are supplementary; drawInfo carries the rest.
+      }
+      return out;
+    }
+
+    /** Everything the stat strip shows, in one round of reads. */
+    export async function readShardState(): Promise<ShardState> {
+      const [depth, capacity, leafCount, activeHeight, hour, drawCount, blockNumber] = await resilientRead(
+        () =>
+          Promise.all([
+        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "DEPTH" }),
+        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "capacity" }),
+        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "leafCount" }),
+        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "activeHeight" }),
+        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "timeUnitsNow" }),
+        publicClient.readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawCount" }),
+        publicClient.getBlockNumber(),
+      ]),
+  );
 
   const count = drawCount as bigint;
   let current = count > 0n ? await readDraw(count) : null;
@@ -289,8 +331,22 @@ export async function readDrawHistory(count: bigint): Promise<DrawRow[]> {
  * handles decrypt for nobody without a grant, which is exactly why publishing
  * them costs nothing and makes the register auditable.
  */
-export async function readSlotHandles(capacity: number): Promise<(`0x${string}` | null)[]> {
-  const slots: (`0x${string}` | null)[] = Array.from({ length: capacity }, () => null);
+export type Slot = {
+  handle: `0x${string}`;
+  /**
+   * Whole hours since this stake last changed.
+   *
+   * A time-scoped position states its age next to its identity, which is the
+   * one device worth taking from Pendle: a maturity-dated market reads
+   * `reUSDe 102 days` and nowhere else. Hours held is the input to the weight
+   * line, so a register slot that shows only a handle is hiding the number
+   * that decides the draw.
+   */
+  hoursHeld: number;
+};
+
+export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]> {
+  const slots: (Slot | null)[] = Array.from({ length: capacity }, () => null);
 
   const head = await publicClient.getBlockNumber();
   const logs = await getLogsChunked<{ args: { owner?: Address; leaf?: bigint } }>(
@@ -306,17 +362,34 @@ export async function readSlotHandles(capacity: number): Promise<(`0x${string}` 
     }
   }
 
+  const nowHour = (await publicClient.readContract({
+    address: POOL,
+    abi: POOL_ABI,
+    functionName: "timeUnitsNow",
+  })) as bigint;
+
   await Promise.all(
     [...owners.entries()].map(async ([leaf, owner]) => {
       if (leaf >= capacity) return;
       try {
-        const handle = (await publicClient.readContract({
-          address: POOL,
-          abi: POOL_ABI,
-          functionName: "stakeOf",
-          args: [owner],
-        })) as `0x${string}`;
-        slots[leaf] = handle === ZERO_HANDLE ? null : handle;
+        const [handle, lastChange] = await Promise.all([
+          publicClient.readContract({
+            address: POOL,
+            abi: POOL_ABI,
+            functionName: "stakeOf",
+            args: [owner],
+          }) as Promise<`0x${string}`>,
+          publicClient.readContract({
+            address: POOL,
+            abi: POOL_ABI,
+            functionName: "lastChangeOf",
+            args: [owner],
+          }) as Promise<number>,
+        ]);
+        slots[leaf] =
+          handle === ZERO_HANDLE
+            ? null
+            : { handle, hoursHeld: Math.max(0, Number(nowHour) - Number(lastChange)) };
       } catch {
         slots[leaf] = null;
       }
@@ -334,6 +407,11 @@ export type Position = {
   lastChange: number;
   walletHandle: `0x${string}`;
   isOperator: boolean;
+  /** Whole hours since the last balance change. Drives the weight line. */
+  hoursHeld: number;
+  /** Leaves in use, so a position can state its share of the shard. */
+  leafCount: number;
+  capacity: number;
 };
 
 export async function readPosition(account: Address): Promise<Position> {
@@ -377,6 +455,12 @@ export async function readPosition(account: Address): Promise<Position> {
       }),
     ]);
 
+  const [nowHour, leafCount, capacity] = await Promise.all([
+    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "timeUnitsNow" }),
+    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "leafCount" }),
+    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "capacity" }),
+  ]);
+
   let leaf: number | null = null;
   if (hasLeaf as boolean) {
     leaf = Number(
@@ -397,6 +481,9 @@ export async function readPosition(account: Address): Promise<Position> {
     lastChange: Number(lastChange),
     walletHandle: walletHandle as `0x${string}`,
     isOperator: isOperator as boolean,
+    hoursHeld: Math.max(0, Number(nowHour) - Number(lastChange)),
+    leafCount: Number(leafCount),
+    capacity: Number(capacity),
   };
 }
 

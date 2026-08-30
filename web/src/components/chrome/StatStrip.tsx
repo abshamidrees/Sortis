@@ -18,7 +18,13 @@ import styles from "./StatStrip.module.css";
  * 5,000,000 sequential limit, and that is visible without reading a word.
  */
 
-const POLL_MS = 12_000;
+/* Slow enough not to spend a rate limit on a number that changes every few
+   minutes. The strip reads seven values, so a 12s poll was 35 calls a minute
+   before anything else on the page had loaded. */
+const POLL_MS = 30_000;
+
+/** Shown before the first read lands. Never an em dash: see the craft standard. */
+const LOADING = "reading";
 
 type Cell = {
   label: string;
@@ -61,23 +67,23 @@ export function StatStrip() {
 
   const cells: Cell[] = [
     { label: "SHARD", value: "001" },
-    { label: "HEIGHT", value: state ? String(state.depth) : "—" },
+    { label: "HEIGHT", value: state ? String(state.depth) : LOADING },
     {
       label: "STAKES",
-      value: state ? `${state.leafCount} / ${state.capacity}` : "—",
+      value: state ? `${state.leafCount} / ${state.capacity}` : LOADING,
     },
     {
       label: "POT",
-      value: state ? `${formatUnits6(state.pot)} cUSDT` : "—",
+      value: state ? `${formatUnits6(state.pot)} cUSDT` : LOADING,
       tone: "brass",
     },
     {
       label: "DRAW",
-      value: state ? (state.drawCount > 0n ? `#${state.drawCount}` : "none yet") : "—",
+      value: state ? (state.drawCount > 0n ? `#${state.drawCount}` : "none yet") : LOADING,
     },
     {
       label: "OPENED",
-      value: state?.current ? String(state.current.openedAtBlock) : "—",
+      value: state?.current ? String(state.current.openedAtBlock) : LOADING,
     },
     {
       label: "DEPTH",

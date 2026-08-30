@@ -33,6 +33,106 @@ type TxState = { status: "idle" | "pending" | "mined" | "failed"; detail?: strin
 
 const FAR_FUTURE = 2n ** 47n;
 
+/**
+ * A confidential value, in its three states.
+ *
+ * Decrypting a handle into another handle looks like nothing happened, which
+ * is what the previous version did: the value went from one truncated hex
+ * string to a slightly different truncated hex string and the user was left
+ * guessing whether the signature had worked.
+ *
+ *   sealed     the real handle, in --seal
+ *   working    --gleam, with a progress line, while the relayer runs
+ *   revealed   the decimal value in --ink, in place, with a way back
+ *
+ * The way back matters. Revealing is a decision, and a value that cannot be
+ * put away again turns one glance at a balance into a shoulder-surfing risk
+ * for as long as the tab is open.
+ */
+function EncryptedValue({
+  handle,
+  clear,
+  busy,
+  disabled,
+  onDecrypt,
+  onHide,
+  progress,
+}: {
+  handle: `0x${string}` | undefined;
+  clear: bigint | null;
+  busy: boolean;
+  disabled: boolean;
+  onDecrypt: () => void;
+  onHide: () => void;
+  progress: { phase: string; message: string };
+}) {
+  const state = clear !== null ? "revealed" : busy ? "working" : "sealed";
+
+  return (
+    <span className={shell.kvValue}>
+      <span className="ciphertext" data-state={state}>
+        {clear !== null ? `${(Number(clear) / 1e6).toFixed(6)} cUSDT` : truncate(handle)}
+      </span>
+
+      {clear !== null ? (
+        <button type="button" className={shell.inlineAction} onClick={onHide}>
+          re-encrypt
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={shell.inlineAction}
+          onClick={onDecrypt}
+          disabled={disabled}
+        >
+          {busy ? "decrypting" : "decrypt"}
+        </button>
+      )}
+
+      {busy ? (
+        <span className={shell.progress}>
+          {progress.phase === "fetching-keys" || progress.phase === "loading-sdk"
+            ? progress.message
+            : "Signing EIP-712, then asking the relayer."}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** Sequential HCU per action. The same numbers connected or not. */
+function CostPanel() {
+  return (
+    <section className={shell.panel}>
+      <div className={shell.panelHead}>
+        <span className={shell.panelLabel}>Cost</span>
+        <span className={shell.panelMeta}>sequential HCU</span>
+      </div>
+      <div className={shell.panelBodyFlush}>
+        <table className={shell.table}>
+          <tbody>
+            <tr>
+              <td>commit</td>
+              <td>{HCU.COMMIT_DEPTH.toLocaleString("en-US")}</td>
+            </tr>
+            <tr>
+              <td>release</td>
+              <td>{HCU.COMMIT_DEPTH.toLocaleString("en-US")}</td>
+            </tr>
+            <tr>
+              <td>draw</td>
+              <td>
+                {HCU.DRAW[3].depth.toLocaleString("en-US")} /{" "}
+                {HCU.DEPTH_LIMIT.toLocaleString("en-US")}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function RegisterScreen() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
@@ -167,29 +267,92 @@ export function RegisterScreen() {
     [address, commitAmount, releaseAmount, encryptAmount, writeContractAsync, publicClient, refresh],
   );
 
+  /*
+    Disconnected.
+
+    Not a single floating box in an empty viewport. Everything on this screen
+    that does not depend on a wallet is public, so it is shown: what connecting
+    will do, what the faucet hands you, and what each action costs. A judge
+    should be able to read the whole shape of the route before signing
+    anything.
+  */
   if (!isConnected) {
     return (
       <AppShell>
-        <div className={shell.centred}>
-          <section className={shell.panel} style={{ maxWidth: 520, width: "100%" }}>
-            <div className={shell.panelHead}>
-              <span className={shell.panelLabel}>Position</span>
-              <span className={shell.panelMeta}>not connected</span>
-            </div>
-            <div className={shell.panelBody}>
-              <p className={shell.note} style={{ margin: 0, lineHeight: 1.7 }}>
-                Connect a wallet with the button above to commit, release and read your own
-                position. Your balance is a ciphertext on chain, decrypted in your browser for
-                this session only.
-              </p>
-            </div>
-          </section>
+        <div className={shell.split} data-ratio="8/4">
+          <div className={shell.stack}>
+            <section className={shell.panel}>
+              <div className={shell.panelHead}>
+                <span className={shell.panelLabel}>Position</span>
+                <span className={shell.panelMeta}>not connected</span>
+              </div>
+              <div className={shell.panelBody}>
+                <div className={shell.kv}>
+                  <span className={shell.kvKey}>Stake</span>
+                  <span className={shell.kvValue} style={{ color: "var(--graphite)" }}>
+                    connect to read
+                  </span>
+
+                  <span className={shell.kvKey}>Wallet</span>
+                  <span className={shell.kvValue} style={{ color: "var(--graphite)" }}>
+                    connect to read
+                  </span>
+
+                  <span className={shell.kvKey}>Network</span>
+                  <span className={shell.kvValue}>Sepolia</span>
+
+                  <span className={shell.kvKey}>Token</span>
+                  <span className={shell.kvValue}>
+                    cUSDT
+                    <span className={shell.kvAside}>ERC-7984, 6 decimals</span>
+                  </span>
+
+                  <span className={shell.kvKey}>Decryption</span>
+                  <span className={shell.kvValue}>
+                    EIP-712
+                    <span className={shell.kvAside}>signed in your wallet, read in your browser</span>
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section className={shell.panel}>
+              <div className={shell.panelHead}>
+                <span className={shell.panelLabel}>What happens on connect</span>
+                <span className={shell.panelMeta}>three steps</span>
+              </div>
+              <div className={shell.panelBodyFlush}>
+                <table className={`${shell.table} ${shell.tableWrap}`}>
+                  <tbody>
+                    <tr>
+                      <td style={{ width: "10%" }}>1</td>
+                      <td>Mint 5 cUSDT from the faucet and authorise the pool to pull</td>
+                    </tr>
+                    <tr>
+                      <td>2</td>
+                      <td>Commit an amount, encrypted in your browser before it is sent</td>
+                    </tr>
+                    <tr>
+                      <td>3</td>
+                      <td>Release any part of it back, at any time, with no loss</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <div className={shell.stack}>
+            <CostPanel />
+          </div>
         </div>
       </AppShell>
     );
   }
 
   const busy = (tx: TxState) => tx.status === "pending";
+
+
 
   return (
     <AppShell>
@@ -218,67 +381,43 @@ export function RegisterScreen() {
               </span>
             </div>
             <div className={shell.panelBody}>
-              {/* The position as one fact, primary beside secondary. Both are
-                  ciphertext handles until you decrypt them, so the big number
-                  is a handle until it is not. */}
-              <div className={shell.bigNumber} style={{ marginBottom: "var(--s-5)" }}>
-                <span className={shell.bigPrimary}>
-                  <span className={shell.kvKey}>Your stake</span>
-                  <span
-                    className={shell.bigValue}
-                    data-encrypted={stakeClear === null}
-                  >
-                    {stakeClear !== null
-                      ? `${(Number(stakeClear) / 1e6).toFixed(2)} cUSDT`
-                      : truncate(position?.stakeHandle)}
-                  </span>
-                </span>
-                <span className={shell.bigSecondary}>
-                  <span className={shell.kvKey}>Shard share</span>
-                  <span className={shell.kvValue} style={{ color: "var(--graphite)" }}>
-                    encrypted
-                  </span>
-                </span>
-              </div>
+              {/*
+                One two-column key-value grid, and nothing above it.
 
+                The oversized handle that used to sit here duplicated the STAKE
+                row four lines below it, and a truncated ciphertext handle is
+                not a hero number: it is the same eight characters at 32px.
+                Under /app a value earns its size by being a value.
+              */}
               <div className={shell.kv}>
                 <span className={shell.kvKey}>Stake</span>
-                <span className={shell.kvValue}>
-                  <span className="ciphertext" data-state={stakeClear !== null ? "revealed" : undefined}>
-                    {stakeClear !== null
-                      ? `${(Number(stakeClear) / 1e6).toFixed(6)} cUSDT`
-                      : truncate(position?.stakeHandle)}
-                  </span>
-                  <button
-                    type="button"
-                    className={shell.inlineAction}
-                    onClick={() => decrypt("stake")}
-                    disabled={decrypting !== null || !position?.hasLeaf}
-                  >
-                    {decrypting === "stake" ? "decrypting" : "decrypt"}
-                  </button>
-                </span>
+                <EncryptedValue
+                  handle={position?.stakeHandle}
+                  clear={stakeClear}
+                  busy={decrypting === "stake"}
+                  disabled={decrypting !== null || !position?.hasLeaf}
+                  onDecrypt={() => decrypt("stake")}
+                  onHide={() => setStakeClear(null)}
+                  progress={progress}
+                />
 
                 <span className={shell.kvKey}>Wallet</span>
-                <span className={shell.kvValue}>
-                  <span className="ciphertext" data-state={walletClear !== null ? "revealed" : undefined}>
-                    {walletClear !== null
-                      ? `${(Number(walletClear) / 1e6).toFixed(6)} cUSDT`
-                      : truncate(position?.walletHandle)}
-                  </span>
-                  <button
-                    type="button"
-                    className={shell.inlineAction}
-                    onClick={() => decrypt("wallet")}
-                    disabled={decrypting !== null}
-                  >
-                    {decrypting === "wallet" ? "decrypting" : "decrypt"}
-                  </button>
-                </span>
+                <EncryptedValue
+                  handle={position?.walletHandle}
+                  clear={walletClear}
+                  busy={decrypting === "wallet"}
+                  disabled={decrypting !== null}
+                  onDecrypt={() => decrypt("wallet")}
+                  onHide={() => setWalletClear(null)}
+                  progress={progress}
+                />
 
                 <span className={shell.kvKey}>Weight line</span>
                 <span className={shell.kvValue}>
                   <span className="ciphertext">{truncate(position?.weightHandle)}</span>
+                  <span className={shell.kvAside}>
+                    {position ? `${position.hoursHeld}h held` : ""}
+                  </span>
                 </span>
 
                 <span className={shell.kvKey}>Leaf index</span>
@@ -286,11 +425,32 @@ export function RegisterScreen() {
                   {position?.hasLeaf ? position.leaf : "assigned on first commit"}
                 </span>
 
+                <span className={shell.kvKey}>Shard share</span>
+                <span className={shell.kvValue}>
+                  <span style={{ color: "var(--seal)" }}>encrypted</span>
+                  <span className={shell.kvAside}>
+                    {position ? `1 of ${position.leafCount} leaves in use` : ""}
+                  </span>
+                </span>
+
                 <span className={shell.kvKey}>Pool operator</span>
                 <span className={shell.kvValue} data-tone={position?.isOperator ? undefined : "fault"}>
                   {position?.isOperator ? "authorised" : "not authorised"}
                 </span>
               </div>
+
+              {/*
+                Without this line the grid reads as a rendering bug. Several
+                handles end in the same four characters because an FHEVM handle
+                carries its type and chain id in its trailing bytes, so every
+                euint64 on Sepolia shares that tail. Anyone who has not worked
+                with FHEVM assumes the page is repeating itself.
+              */}
+              <p className={shell.note}>
+                Handles sharing a tail is not a bug. An FHEVM handle encodes its
+                type and chain in the trailing bytes, so every euint64 on Sepolia
+                ends the same way. The leading bytes are what differ.
+              </p>
 
               <p className={shell.note}>
                 Decrypted in this session only. Nothing is sent anywhere.
@@ -435,33 +595,7 @@ export function RegisterScreen() {
             </div>
           </section>
 
-          <section className={shell.panel}>
-            <div className={shell.panelHead}>
-              <span className={shell.panelLabel}>Cost</span>
-              <span className={shell.panelMeta}>sequential HCU</span>
-            </div>
-            <div className={shell.panelBodyFlush}>
-              <table className={shell.table}>
-                <tbody>
-                  <tr>
-                    <td>commit</td>
-                    <td>{HCU.COMMIT_DEPTH.toLocaleString("en-US")}</td>
-                  </tr>
-                  <tr>
-                    <td>release</td>
-                    <td>{HCU.COMMIT_DEPTH.toLocaleString("en-US")}</td>
-                  </tr>
-                  <tr>
-                    <td>draw</td>
-                    <td>
-                      {HCU.DRAW[3].depth.toLocaleString("en-US")} /{" "}
-                      {HCU.DEPTH_LIMIT.toLocaleString("en-US")}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <CostPanel />
         </div>
       </div>
     </AppShell>

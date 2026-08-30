@@ -73,3 +73,16 @@ h3 {
   outline-offset: 2px;
   border-radius: var(--r-slot);
 }
+
+/* The three states of a confidential value.
+   Sealed is the resting state and the one the product is about. Working has to
+   look like work is happening, because decrypting a handle into another handle
+   looks like nothing happened. Revealed is the only one that is not a handle. */
+.ciphertext[data-state="working"] {
+  color: var(--gleam);
+}
+
+.ciphertext[data-state="revealed"] {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}

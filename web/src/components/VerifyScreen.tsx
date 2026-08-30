@@ -233,7 +233,13 @@ function VerifyBody() {
                 </span>
               </div>
               <div className={shell.panelBodyFlush}>
-                <table className={shell.table}>
+                <table className={`${shell.table} ${shell.tableWrap}`}>
+                  <colgroup>
+                    <col style={{ width: "30%" }} />
+                    <col style={{ width: "26%" }} />
+                    <col style={{ width: "30%" }} />
+                    <col style={{ width: "14%" }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>Check</th>

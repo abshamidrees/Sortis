@@ -5,7 +5,8 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/chrome/AppShell";
 import { DrawColumn } from "@/components/DrawColumn";
-import { ETHERSCAN } from "@/lib/measurements";
+import { ETHERSCAN, HCU } from "@/lib/measurements";
+import type { Slot } from "@/lib/chain";
 import {
   CONFIGURED,
   readDrawHistory,
@@ -28,6 +29,15 @@ import shell from "@/components/chrome/AppShell.module.css";
 type Filter = "all" | "drawn" | "claimed";
 
 /**
+ * An unoccupied register slot.
+ *
+ * A middot, not an em dash. The craft standard bans em dashes everywhere, the
+ * UI included, and a middot reads as "this slot exists and holds nothing"
+ * rather than as a missing value.
+ */
+const EMPTY_SLOT = "·";
+
+/**
  * How a lot handle reads.
  *
  * Three distinct cases, and collapsing the last two is what put "not drawn"
@@ -44,7 +54,7 @@ function lotHandleText(row: DrawRow): string {
 export function DrawScreen() {
   const [state, setState] = useState<ShardState | null>(null);
   const [history, setHistory] = useState<DrawRow[]>([]);
-  const [slots, setSlots] = useState<(string | null)[]>([]);
+  const [slots, setSlots] = useState<(Slot | null)[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [failed, setFailed] = useState(false);
 
@@ -82,13 +92,37 @@ export function DrawScreen() {
    * craft standard forbids placeholder data anywhere a real value belongs, and
    * a register that is one third full should look one third full.
    */
-  const columnHandles = useMemo(() => {
-    if (!state) return undefined;
-    return Array.from({ length: state.capacity }, (_, i) => {
-      const handle = slots[i];
-      return handle ? truncate(handle, 3) : "—";
-    });
-  }, [slots, state]);
+  /*
+    ALWAYS an array, never undefined.
+
+    DrawColumn generates plausible handles when it is given none, which is
+    right for the landing hero and wrong here. When a chain read failed this
+    route handed it undefined and it filled all 32 slots with invented hex,
+    under a route titled "live", beside a panel saying the chain was
+    unreachable. An empty register has to look empty.
+  */
+  const columnHandles = useMemo(
+    () =>
+      Array.from({ length: state?.capacity ?? 32 }, (_, i) =>
+        slots[i] ? truncate(slots[i]!.handle, 3) : EMPTY_SLOT,
+      ),
+    [slots, state],
+  );
+
+  /**
+   * Hours held, shown beside each slot's handle.
+   *
+   * The one device worth taking from Pendle: a time-scoped position states its
+   * age next to its identity. Hours held is the input to the weight line, so a
+   * slot showing only a handle hides the number that decides the draw.
+   */
+  const columnMeta = useMemo(
+    () =>
+      Array.from({ length: state?.capacity ?? 32 }, (_, i) =>
+        slots[i] ? `${slots[i]!.hoursHeld}h` : "",
+      ),
+    [slots, state],
+  );
 
   const filtered = history.filter((row) =>
     filter === "all" ? true : filter === "drawn" ? row.lotDrawn : row.lotDrawn,
@@ -105,7 +139,7 @@ export function DrawScreen() {
           <div className={shell.panelHead}>
             <span className={shell.panelLabel}>Register, shard 001</span>
             <span className={shell.panelMeta}>
-              {state ? `${state.leafCount} / ${state.capacity}` : "—"}
+              {state ? `${state.leafCount} / ${state.capacity}` : "reading"}
             </span>
           </div>
           <div className={shell.panelBody}>
@@ -113,6 +147,7 @@ export function DrawScreen() {
               <DrawColumn
                 levels={levels}
                 handles={columnHandles}
+              meta={columnMeta}
                 showReplay
                 autoPlay
                 /* The resolved leaf is an encrypted euint16 with no grant on
@@ -171,11 +206,30 @@ export function DrawScreen() {
                     {current.totalWeight.toLocaleString("en-US")}
                   </span>
 
-                  <span className={shell.kvKey}>Walk height</span>
-                  <span className={shell.kvValue}>{current.walkHeight}</span>
-
                   <span className={shell.kvKey}>Status</span>
                   <span className={shell.kvValue}>{current.status}</span>
+
+                  {/* The two numbers the whole submission rests on, on screen
+                      rather than only in the README. */}
+                  <span className={shell.kvKey}>Walk height</span>
+                  <span className={shell.kvValue}>
+                    {current.walkHeight}
+                    <span className={shell.kvAside}>
+                      {current.walkHeight === 0
+                        ? "one leaf carries weight, so the descent short-circuits"
+                        : `${2 ** current.walkHeight} leaf subtree`}
+                    </span>
+                  </span>
+
+                  <span className={shell.kvKey}>drawLot depth</span>
+                  <span className={shell.kvValue} data-tone="brass">
+                    {HCU.DRAW[3].depth.toLocaleString("en-US")}
+                    <span className={shell.kvAside}>
+                      of {HCU.DEPTH_LIMIT.toLocaleString("en-US")} at{" "}
+                      {HCU.SHARD_CEILING} stakes,{" "}
+                      {((HCU.DRAW[3].depth / HCU.DEPTH_LIMIT) * 100).toFixed(1)}%
+                    </span>
+                  </span>
                 </div>
               ) : (
                 <p className={shell.note}>
@@ -207,7 +261,14 @@ export function DrawScreen() {
             </div>
             <div className={`${shell.panelBodyFlush} ${shell.feed}`}>
               {filtered.length ? (
-                <table className={shell.table}>
+                <table className={`${shell.table} ${shell.tableTight}`}>
+                  <colgroup>
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "26%" }} />
+                    <col style={{ width: "24%" }} />
+                    <col style={{ width: "24%" }} />
+                    <col style={{ width: "14%" }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>ID</th>
