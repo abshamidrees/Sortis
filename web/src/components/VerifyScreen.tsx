@@ -35,7 +35,19 @@ type Check = {
 
 function VerifyBody() {
   const params = useSearchParams();
-  const [drawId, setDrawId] = useState(params.get("draw") ?? "1");
+  /*
+    Defaults to the LATEST draw, not to draw 1.
+
+    Draw 1 on this shard was opened while a single leaf carried weight, so it
+    settled with walk height 0 and demonstrates nothing about the descent. It
+    is permanent history and cannot be repaired, so the app should not open on
+    it: a judge landing here should see the most recent draw, which is the one
+    that actually descended the tree.
+
+    An explicit ?draw=N in the URL still wins, because a verify link from the
+    history table has to resolve the row it was clicked from.
+  */
+  const [drawId, setDrawId] = useState(params.get("draw") ?? "");
   const [checks, setChecks] = useState<Check[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -160,13 +172,30 @@ function VerifyBody() {
   );
 
   // A verify link from the history table lands here with ?draw=N and should
-  // resolve without a second click.
+  // resolve without a second click. With no parameter, resolve the latest draw
+  // from chain rather than assuming a number.
   useEffect(() => {
     const fromQuery = params.get("draw");
     if (fromQuery) {
       setDrawId(fromQuery);
       void verify(fromQuery);
+      return;
     }
+    let alive = true;
+    void publicClient
+      .readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawCount" })
+      .then((count) => {
+        const latest = (count as bigint).toString();
+        if (!alive || latest === "0") return;
+        setDrawId(latest);
+        void verify(latest);
+      })
+      .catch(() => {
+        // Leave the field empty rather than guessing an id that may not exist.
+      });
+    return () => {
+      alive = false;
+    };
   }, [params, verify]);
 
   const fails = checks?.filter((c) => !c.pass).length ?? 0;

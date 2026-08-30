@@ -27,7 +27,7 @@ import shell from "@/components/chrome/AppShell.module.css";
  * far. Everything reads from Sepolia.
  */
 
-type Filter = "all" | "drawn" | "claimed";
+type Filter = "all" | "drawn" | "open";
 
 /**
  * An unoccupied register slot.
@@ -143,8 +143,17 @@ export function DrawScreen() {
     [slots, state],
   );
 
+  /*
+    "Claimed" is gone, and both remaining filters do something.
+
+    The third chip used to be CLAIMED, and both it and DRAWN returned
+    `row.lotDrawn`, so selecting it changed nothing. It could not have worked:
+    claiming is per address, `hasClaimed(drawId, account)` needs one, and there
+    is no global claimed state for a draw to filter on. A chip that quietly
+    does nothing is worse than one that is absent.
+  */
   const filtered = history.filter((row) =>
-    filter === "all" ? true : filter === "drawn" ? row.lotDrawn : row.lotDrawn,
+    filter === "all" ? true : filter === "drawn" ? row.lotDrawn : !row.lotDrawn,
   );
 
   const current = state?.current ?? null;
@@ -265,7 +274,7 @@ export function DrawScreen() {
             <div className={shell.panelHead}>
               <span className={shell.panelLabel}>History</span>
               <span className={shell.chips}>
-                {(["all", "drawn", "claimed"] as Filter[]).map((f) => (
+                {(["all", "drawn", "open"] as Filter[]).map((f) => (
                   <button
                     key={f}
                     type="button"
