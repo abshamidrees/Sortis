@@ -394,7 +394,33 @@ export type Slot = {
   hoursHeld: number;
 };
 
+const SLOT_CACHE_KEY = "sortis.slots";
+const SLOT_CACHE_MS = 120_000;
+
+function readSlotCache(): (Slot | null)[] | null {
+  try {
+    const raw = sessionStorage.getItem(SLOT_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() - parsed.at > SLOT_CACHE_MS) return null;
+    return parsed.slots as (Slot | null)[];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The register's slots, as real ciphertext handles.
+ *
+ * CACHED FOR TWO MINUTES. A full shard is one log scan plus 48 contract reads,
+ * and re-running that on every navigation is what got this app rate limited to
+ * 429 by the RPC. The slots only change when somebody commits or releases, so
+ * a short cache costs nothing and removes most of the traffic.
+ */
 export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]> {
+  const cached = readSlotCache();
+  if (cached) return cached;
+
   const slots: (Slot | null)[] = Array.from({ length: capacity }, () => null);
 
   const head = await publicClient.getBlockNumber();
@@ -477,6 +503,12 @@ export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]
 
   if (failed > 0) {
     console.warn(`sortis: ${failed} of ${entries.length} register slots could not be read`);
+  }
+
+  try {
+    sessionStorage.setItem(SLOT_CACHE_KEY, JSON.stringify({ at: Date.now(), slots }));
+  } catch {
+    // A private window refuses storage. The reads still work, they just repeat.
   }
 
   return slots;
