@@ -203,6 +203,8 @@ export type ShardState = {
   drawCount: bigint;
   blockNumber: bigint;
   current: DrawRow | null;
+  /** An open draw sitting in front of `current`, when one exists. */
+  pendingDraw: DrawRow | null;
   rpcOk: boolean;
 };
 
@@ -405,7 +407,43 @@ export async function readShardState(): Promise<ShardState> {
     That scan was why /app/register still read "reading" after sixteen seconds
     while competing with the position and activity queries.
   */
-  const current = count > 0n ? await readDraw(count) : null;
+  /*
+    The latest SETTLED draw, not simply the latest.
+
+    /app/verify already walks back to the newest settled draw and /app did not,
+    so opening a draw from the Trigger panel replaced a finished draw showing a
+    five level descent with an empty one: total weight 0, lot not drawn, walk
+    height 0. The most impressive thing the protocol does was one click away
+    behind a history panel, and the landing state was a column of zeroes.
+
+    An unsettled draw is still surfaced, as `pending`, because hiding it would
+    make the Trigger control look like it did nothing.
+  */
+  let current: DrawRow | null = null;
+  let pendingDraw: DrawRow | null = null;
+  if (count > 0n) {
+    const newest = await readDraw(count);
+    if (newest.lotDrawn) {
+      current = newest;
+    } else {
+      pendingDraw = newest;
+      // Walk back to the newest draw that actually settled. Bounded at four so
+      // a long unsettled tail cannot turn one strip poll into a dozen reads.
+      for (
+        let id = count - 1n, tries = 0;
+        id > 0n && tries < 4;
+        id--, tries++
+      ) {
+        const row = await readDraw(id);
+        if (row.lotDrawn) {
+          current = row;
+          break;
+        }
+      }
+      // Nothing has ever settled. Show the open one rather than nothing at all.
+      if (!current) current = newest;
+    }
+  }
 
   // The pot is what the draw contract already holds plus what has accrued but
   // not been harvested. Both are public: the prize size is not a secret, only
@@ -433,6 +471,7 @@ export async function readShardState(): Promise<ShardState> {
     drawCount: count,
     blockNumber,
     current,
+    pendingDraw,
     rpcOk: true,
   };
 }

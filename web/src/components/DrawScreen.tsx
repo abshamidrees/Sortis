@@ -82,15 +82,21 @@ export function DrawScreen() {
               prev?.current
                 ? {
                     ...prev,
-                    current: { ...prev.current, lotHandle: drawn.lot, drawnAtBlock: drawn.block },
+                    current: {
+                      ...prev.current,
+                      lotHandle: drawn.lot,
+                      drawnAtBlock: drawn.block,
+                    },
                   }
-                : prev,
+                : prev
             );
           });
         }
 
         const [rows, handles] = await Promise.all([
-          next.drawCount > 0n ? readDrawHistory(next.drawCount) : Promise.resolve([]),
+          next.drawCount > 0n
+            ? readDrawHistory(next.drawCount)
+            : Promise.resolve([]),
           readSlotHandles(next.capacity),
         ]);
         if (!alive) return;
@@ -139,9 +145,9 @@ export function DrawScreen() {
   const columnHandles = useMemo(
     () =>
       Array.from({ length: state?.capacity ?? 32 }, (_, i) =>
-        slots[i] ? truncate(slots[i]!.handle, 3) : EMPTY_SLOT,
+        slots[i] ? truncate(slots[i]!.handle, 3) : EMPTY_SLOT
       ),
-    [slots, state],
+    [slots, state]
   );
 
   /**
@@ -154,9 +160,9 @@ export function DrawScreen() {
   const columnMeta = useMemo(
     () =>
       Array.from({ length: state?.capacity ?? 32 }, (_, i) =>
-        slots[i] ? `${slots[i]!.hoursHeld}h` : "",
+        slots[i] ? `${slots[i]!.hoursHeld}h` : ""
       ),
-    [slots, state],
+    [slots, state]
   );
 
   /*
@@ -169,7 +175,7 @@ export function DrawScreen() {
     does nothing is worse than one that is absent.
   */
   const filtered = history.filter((row) =>
-    filter === "all" ? true : filter === "drawn" ? row.lotDrawn : !row.lotDrawn,
+    filter === "all" ? true : filter === "drawn" ? row.lotDrawn : !row.lotDrawn
   );
 
   const current = state?.current ?? null;
@@ -182,7 +188,10 @@ export function DrawScreen() {
         <section className={shell.panel}>
           <div className={shell.panelHead}>
             <span className={shell.panelLabel}>Register, shard 001</span>
-            <span className={shell.panelMeta} data-tone={slotsUnavailable ? "fault" : undefined}>
+            <span
+              className={shell.panelMeta}
+              data-tone={slotsUnavailable ? "fault" : undefined}
+            >
               {state ? `${state.leafCount} / ${state.capacity}` : "reading"}
             </span>
           </div>
@@ -191,7 +200,7 @@ export function DrawScreen() {
               <DrawColumn
                 levels={levels}
                 handles={columnHandles}
-              meta={columnMeta}
+                meta={columnMeta}
                 showReplay
                 autoPlay
                 /* The resolved leaf is an encrypted euint16 with no grant on
@@ -202,8 +211,9 @@ export function DrawScreen() {
               />
             </div>
             <p className={shell.note}>
-              Slot handles are live from Sepolia. The descent is illustrative: the resolved leaf is
-              encrypted, so no client can locate it. See Verify for what is publicly checkable.
+              Slot handles are live from Sepolia. The descent is illustrative:
+              the resolved leaf is encrypted, so no client can locate it. See
+              Verify for what is publicly checkable.
             </p>
           </div>
         </section>
@@ -214,8 +224,14 @@ export function DrawScreen() {
 
           <section className={shell.panel}>
             <div className={shell.panelHead}>
-              <span className={shell.panelLabel}>Current draw</span>
-              <span className={shell.panelMeta} data-status={current?.status ?? "none"}>
+              <span className={shell.panelLabel}>
+                {/* Say which draw this is when it is not the newest one. */}
+                {state?.pendingDraw ? "Latest settled draw" : "Current draw"}
+              </span>
+              <span
+                className={shell.panelMeta}
+                data-status={current?.status ?? "none"}
+              >
                 {current?.status ?? "none yet"}
               </span>
             </div>
@@ -223,20 +239,28 @@ export function DrawScreen() {
               {current ? (
                 <div className={shell.kv}>
                   <span className={shell.kvKey}>Draw id</span>
-                  <span className={shell.kvValue}>#{current.id.toString()}</span>
+                  <span className={shell.kvValue}>
+                    #{current.id.toString()}
+                  </span>
 
                   <span className={shell.kvKey}>Root handle</span>
                   <span className={shell.kvValue}>
-                    <span className="ciphertext">{truncate(current.rootHandle)}</span>
+                    <span className="ciphertext">
+                      {truncate(current.rootHandle)}
+                    </span>
                   </span>
 
                   <span className={shell.kvKey}>Opened block</span>
-                  <span className={shell.kvValue}>{current.openedAtBlock.toString()}</span>
+                  <span className={shell.kvValue}>
+                    {current.openedAtBlock.toString()}
+                  </span>
 
                   <span className={shell.kvKey}>Lot handle</span>
                   <span className={shell.kvValue}>
                     {current.lotHandle ? (
-                      <span className="ciphertext">{truncate(current.lotHandle)}</span>
+                      <span className="ciphertext">
+                        {truncate(current.lotHandle)}
+                      </span>
                     ) : (
                       lotHandleText(current)
                     )}
@@ -244,7 +268,9 @@ export function DrawScreen() {
 
                   <span className={shell.kvKey}>Resolved handle</span>
                   <span className={shell.kvValue}>
-                    <span className="ciphertext">{truncate(current.resolvedLeaf)}</span>
+                    <span className="ciphertext">
+                      {truncate(current.resolvedLeaf)}
+                    </span>
                   </span>
 
                   <span className={shell.kvKey}>Total weight</span>
@@ -259,9 +285,20 @@ export function DrawScreen() {
                       rather than only in the README. */}
                   <span className={shell.kvKey}>Walk height</span>
                   <span className={shell.kvValue}>
-                    {current.walkHeight}
+                    {current.lotDrawn ? current.walkHeight : "-"}
                     <span className={shell.kvAside}>
-                      {current.walkHeight === 0
+                      {/*
+                        An unsettled draw has walkHeight 0 because no walk has
+                        run, NOT because one leaf carries weight. The old copy
+                        stated the second reason unconditionally, so an open
+                        draw claimed the register had a single weighted leaf
+                        while the strip two panels away reported activeHeight
+                        5 over 24 stakes. A draw that has not run has no height
+                        to report, so it reports none.
+                      */}
+                      {!current.lotDrawn
+                        ? "not settled yet"
+                        : current.walkHeight === 0
                         ? "one leaf carries weight, so the descent short-circuits"
                         : `${2 ** current.walkHeight} leaf subtree`}
                     </span>
@@ -273,15 +310,35 @@ export function DrawScreen() {
                     <span className={shell.kvAside}>
                       of {HCU.DEPTH_LIMIT.toLocaleString("en-US")} at{" "}
                       {HCU.SHARD_CEILING} stakes,{" "}
-                      {((HCU.DRAW[3].depth / HCU.DEPTH_LIMIT) * 100).toFixed(1)}%
+                      {((HCU.DRAW[3].depth / HCU.DEPTH_LIMIT) * 100).toFixed(1)}
+                      %
                     </span>
                   </span>
                 </div>
               ) : (
                 <p className={shell.note}>
-                  {failed ? "Chain unreachable." : "No draw has been opened on this shard yet."}
+                  {failed
+                    ? "Chain unreachable."
+                    : "No draw has been opened on this shard yet."}
                 </p>
               )}
+
+              {/*
+                An open draw sits in front of this one.
+
+                This panel deliberately shows the newest SETTLED draw, because
+                an unsettled one has nothing to show. Saying so is what keeps
+                the Trigger control honest: without this line, opening a draw
+                appears to change nothing on the page.
+              */}
+              {state?.pendingDraw ? (
+                <p className={shell.note}>
+                  Draw #{state.pendingDraw.id.toString()} is open and awaiting
+                  settlement, so it has no height or winner yet. Settling needs
+                  a KMS proof fetched off chain; see the README for the keeper
+                  flow.
+                </p>
+              ) : null}
             </div>
           </section>
         </div>

@@ -1,0 +1,12 @@
+{
+  "drawId": 2,
+  "walkHeight": 5,
+  "totalWeight": "150570000",
+  "prize": "0",
+  "drawLotGas": "2583714",
+  "sequentialDepth": 4476000,
+  "globalHCU": 9134672,
+  "mockDepth": 4476000,
+  "diverged": false,
+  "settledAt": "2026-08-30T12:31:40.081Z"
+}
