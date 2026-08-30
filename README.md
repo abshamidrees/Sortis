@@ -72,10 +72,15 @@ The Next app lives in `web/`, and the repository root is the Hardhat project.
 A Vercel build pointed at the root fails with `No Next.js version detected`,
 because the root `package.json` has no `next` in it and should not.
 
-`vercel.json` at the root fixes this by building from `web/` explicitly. If you
-would rather use the dashboard, set **Root Directory** to `web` in project
-settings, which makes `web/vercel.json` the one that applies. Either works;
-both are committed so it does not matter which you pick.
+The fix is the project's **Root Directory** setting, which is `web`. Vercel then
+treats `web/package.json` as the manifest, finds `next` where it actually is,
+and reads `web/vercel.json`.
+
+There is no `vercel.json` at the repository root, and there should not be. An
+earlier one carried `npm install --prefix web` so that a build from the root
+would work, and once Root Directory moved to `web` that command resolved to
+`web/web` and every deploy failed with exit 254. One place decides where the
+app lives.
 
 ### Environment variables
 
