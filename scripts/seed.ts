@@ -1,4 +1,9 @@
 import hre from "hardhat";
+
+import { installResilientDns } from "./net";
+
+// Must run before any HTTP client is constructed. See scripts/net.ts.
+installResilientDns();
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
