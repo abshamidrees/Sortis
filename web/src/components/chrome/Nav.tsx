@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
+import { useBalance } from "wagmi";
 
 import { REPO_URL } from "@/lib/measurements";
 import { PRIVY_APP_ID } from "@/lib/wagmi";
@@ -145,25 +146,42 @@ export function Nav({ surface }: { surface: "marketing" | "app" }) {
  * "useWallets was called outside the PrivyProvider component".
  */
 function WalletButton() {
-  if (!PRIVY_APP_ID) {
-    return <span className={styles.walletIdle}>wallet unconfigured</span>;
-  }
-  return <PrivyWalletButton />;
-}
-
-/**
- * Privy's own button is not used: it arrives in Privy's brand, and the nav is
- * the one element on every screen. This renders the Sortis button and calls
- * `login()`, so the only Privy surface a user sees is the wallet picker
- * itself, themed to brass on stone in privyConfig.
- *
- * Connected shows a brass dot and the truncated address in IBM Plex Mono, and
- * clicking disconnects. The dot is --brass rather than --seal on purpose:
- * --seal means encrypted in this palette, and a connection indicator in that
- * colour would read as a privacy state.
- */
-function PrivyWalletButton() {
   const { ready, authenticated, login, logout, user } = usePrivy();
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const address = (user?.wallet?.address ?? "") as `0x${string}` | "";
+
+  // Sepolia ETH, which is public and is what a judge actually runs out of.
+  const { data: eth } = useBalance({
+    address: address || undefined,
+    query: { enabled: Boolean(address) },
+  });
+
+  // Close on an outside click or Escape, the way a menu is expected to behave.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onClick = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement)?.closest?.(`[data-wallet-menu]`)) setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onClick);
+    };
+  }, [open]);
+
+  const copy = async () => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard denied. The full address is on screen to select by hand.
+    }
+  };
 
   if (!ready) {
     return <span className={styles.walletIdle}>wallet</span>;
@@ -177,13 +195,70 @@ function PrivyWalletButton() {
     );
   }
 
-  const address = user?.wallet?.address ?? "";
   const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "connected";
 
   return (
-    <button type="button" className={styles.walletConnected} onClick={logout} title="Disconnect">
-      <span className={styles.walletDot} aria-hidden="true" />
-      {short}
-    </button>
+    <div className={styles.walletWrap} data-wallet-menu>
+      <button
+        type="button"
+        className={styles.walletConnected}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <span className={styles.walletDot} aria-hidden="true" />
+        {short}
+      </button>
+
+      {open ? (
+        <div className={styles.walletCard} role="menu">
+          <p className={styles.walletAddress}>{address}</p>
+
+          <button type="button" className={styles.walletRow} onClick={copy}>
+            {copied ? "Copied" : "Copy address"}
+          </button>
+
+          <div className={styles.walletDivider} />
+
+          <div className={styles.walletStat}>
+            <span className={styles.walletStatKey}>Gas</span>
+            <span className={styles.walletStatValue}>
+              {eth ? `${Number(eth.formatted).toFixed(4)} ${eth.symbol}` : "reading"}
+            </span>
+          </div>
+
+          {/*
+            The stake is a euint64 and there is no plaintext balance to put
+            here. Showing a number would mean running the EIP-712 decryption
+            from the nav, which is the Register screen's job and needs a
+            signature. Naming it as encrypted is the honest version, and the
+            link goes where it can actually be read.
+          */}
+          <div className={styles.walletStat}>
+            <span className={styles.walletStatKey}>Stake</span>
+            <Link
+              href="/app/register"
+              className={styles.walletStatLink}
+              onClick={() => setOpen(false)}
+            >
+              encrypted, decrypt on Register
+            </Link>
+          </div>
+
+          <div className={styles.walletDivider} />
+
+          <button
+            type="button"
+            className={`${styles.walletRow} ${styles.walletDisconnect}`}
+            onClick={() => {
+              setOpen(false);
+              void logout();
+            }}
+          >
+            Disconnect
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }

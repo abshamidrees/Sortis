@@ -226,6 +226,116 @@
   flex: none;
 }
 
+/* The wallet card. Light stone and brass, not the dark palette the pattern
+   usually arrives in. */
+
+.walletWrap {
+  position: relative;
+  flex: none;
+}
+
+.walletCard {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 288px;
+  background: var(--chalk);
+  border: var(--hairline);
+  border-radius: var(--r-card);
+  padding: var(--s-4);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* The whole address, wrapped rather than truncated. This is the one place it
+   should be readable in full, because it is the thing being copied. */
+.walletAddress {
+  font-family: var(--font-data);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0 0 var(--s-2);
+  overflow-wrap: anywhere;
+}
+
+.walletRow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--graphite);
+  background: none;
+  border: none;
+  border-radius: var(--r-slot);
+  padding: 8px 6px;
+  margin: 0 -6px;
+  cursor: pointer;
+  transition:
+    color 120ms var(--ease-step),
+    background 120ms var(--ease-step);
+}
+
+.walletRow:hover {
+  color: var(--ink);
+  background: var(--brass-wash);
+}
+
+.walletDisconnect {
+  color: var(--fault);
+}
+
+.walletDisconnect:hover {
+  color: var(--fault);
+  background: color-mix(in srgb, var(--fault) 8%, transparent);
+}
+
+.walletDivider {
+  height: 1px;
+  background: var(--rule);
+  margin: var(--s-2) 0;
+}
+
+.walletStat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 3px 0;
+}
+
+.walletStatKey {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--graphite);
+}
+
+.walletStatValue {
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* Encrypted, and it says so. --seal is the palette's word for that. */
+.walletStatLink {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--seal);
+  text-decoration: none;
+  text-align: right;
+}
+
+.walletStatLink:hover {
+  color: var(--brass);
+}
+
 /* ----------------------------------------------------------------- mobile */
 
 .burger {
