@@ -433,12 +433,17 @@ NEXT_PUBLIC_DEPLOY_BLOCK    11578000
 NEXT_PUBLIC_PRIVY_APP_ID    cmtf6vqxw01zj0cl1wag5zru2
 ```
 
-`NEXT_PUBLIC_SEPOLIA_RPC_URL` is the one that matters in practice. The public
-fallback is rate limited hard enough to be the first thing that breaks under a
-judge's traffic, and a free Infura key is not much better: the register's
-`LeafAssigned` scan is the read that suffers first, and when it is refused the
-app says so by name rather than drawing an empty register. A paid endpoint
-fixes it.
+`NEXT_PUBLIC_SEPOLIA_RPC_URL` replaces the public fallback, which is rate
+limited hard enough to be the first thing that breaks under a judge's traffic.
+
+A free Infura key serves this app, but only because every read retries. The
+register's `LeafAssigned` scan is the read that suffers first, and it was
+failing often enough that the register rendered empty and the draw screen
+printed "Chain unreachable" beside a header showing live data. I took that for
+a hard tier limit and it was not: `resilientRead` had been wired into exactly
+one call out of six. Retrying the rest fixed it. When a read does exhaust its
+retries the app names that state rather than drawing an empty register, because
+a failed read and an empty shard must never look the same.
 
 `NEXT_PUBLIC_DEPLOY_BLOCK` is the earliest block worth scanning for this
 deployment's logs. Public RPCs reject an unbounded `fromBlock: 0` range, which
