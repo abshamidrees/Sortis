@@ -280,6 +280,16 @@
     background 120ms var(--ease-step);
 }
 
+/* Signed in, wallet not attached yet. Muted rather than live. */
+.walletDot[data-linking] {
+  background: var(--stone);
+}
+
+.walletRow:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .walletRow:hover {
   color: var(--ink);
   background: var(--brass-wash);

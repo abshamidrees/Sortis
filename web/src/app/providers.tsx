@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { PrivyProvider } from "@privy-io/react-auth";
-import { WagmiProvider as PrivyWagmiProvider } from "@privy-io/wagmi";
+import { useEffect, useState, type ReactNode } from "react";
+import { useAccount } from "wagmi";
+import { PrivyProvider, useWallets } from "@privy-io/react-auth";
+import { WagmiProvider as PrivyWagmiProvider, useSetActiveWallet } from "@privy-io/wagmi";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -26,6 +27,43 @@ import { PRIVY_APP_ID, privyConfig, wagmiConfig } from "@/lib/wagmi";
  * The fallback exists because a missing environment variable should degrade to
  * a page that renders and says it cannot connect, not to a build that fails.
  */
+/**
+ * Hand Privy's restored wallet to wagmi.
+ *
+ * Privy and wagmi keep separate ideas of who is connected. Privy restores its
+ * session from storage on load, so `usePrivy().authenticated` is true again
+ * after a refresh, but the wagmi connector is not reconnected and
+ * `useAccount()` reports nobody. The nav reads Privy and the screens read
+ * wagmi, so the app showed a connected address in the header and "not
+ * connected" in the position panel at the same time, and the only way out was
+ * to disconnect and connect again.
+ *
+ * Setting the active wallet whenever Privy has one and wagmi does not closes
+ * that gap on every load, not just after an explicit login.
+ *
+ * This mounts ONLY inside PrivyProvider. useWallets outside it is the build
+ * failure described above, and there is nothing to bridge in the fallback
+ * branch anyway, where plain wagmi is the only connector.
+ */
+function WalletBridge({ children }: { children: ReactNode }) {
+  const { wallets } = useWallets();
+  const { setActiveWallet } = useSetActiveWallet();
+  const { address, isConnected } = useAccount();
+
+  useEffect(() => {
+    const wallet = wallets[0];
+    if (!wallet) return;
+    // Also covers the case where Privy switched wallets underneath wagmi.
+    if (isConnected && address?.toLowerCase() === wallet.address.toLowerCase()) return;
+    void setActiveWallet(wallet).catch(() => {
+      // A wallet that will not attach leaves the screens reading "not
+      // connected", which is the honest state rather than a false positive.
+    });
+  }, [wallets, isConnected, address, setActiveWallet]);
+
+  return <>{children}</>;
+}
+
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
 
@@ -40,7 +78,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <PrivyProvider appId={PRIVY_APP_ID} config={privyConfig}>
       <QueryClientProvider client={queryClient}>
-        <PrivyWagmiProvider config={wagmiConfig}>{children}</PrivyWagmiProvider>
+        <PrivyWagmiProvider config={wagmiConfig}>
+          <WalletBridge>{children}</WalletBridge>
+        </PrivyWagmiProvider>
       </QueryClientProvider>
     </PrivyProvider>
   );

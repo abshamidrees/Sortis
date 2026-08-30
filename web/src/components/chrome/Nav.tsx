@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
-import { useBalance } from "wagmi";
+import { useAccount, useBalance } from "wagmi";
 
 import { REPO_URL } from "@/lib/measurements";
 import { PRIVY_APP_ID } from "@/lib/wagmi";
@@ -145,11 +145,26 @@ export function Nav({ surface }: { surface: "marketing" | "app" }) {
  * constant. Calling it unguarded is what made the production build fail with
  * "useWallets was called outside the PrivyProvider component".
  */
+/**
+ * The address here comes from WAGMI, not from Privy.
+ *
+ * Privy restores its session on refresh before the wagmi connector reattaches,
+ * and for a while the two disagree. This button used to read Privy's user
+ * record, so the header showed a connected address while every screen, which
+ * reads wagmi, said "not connected". The only way out was to disconnect and
+ * connect again. Reading the same source the screens read means the header
+ * cannot claim more than the app can actually do.
+ *
+ * WalletBridge in providers.tsx closes the gap; naming the in-between state
+ * here is what makes it visible if it ever fails to.
+ */
 function WalletButton() {
-  const { ready, authenticated, login, logout, user } = usePrivy();
+  const { ready, authenticated, login, logout } = usePrivy();
+  const { address: wagmiAddress } = useAccount();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const address = (user?.wallet?.address ?? "") as `0x${string}` | "";
+  const address = wagmiAddress ?? "";
+  const linking = authenticated && !wagmiAddress;
 
   // Sepolia ETH, which is public and is what a judge actually runs out of.
   const { data: eth } = useBalance({
@@ -195,7 +210,7 @@ function WalletButton() {
     );
   }
 
-  const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "connected";
+  const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "connecting";
 
   return (
     <div className={styles.walletWrap} data-wallet-menu>
@@ -206,15 +221,22 @@ function WalletButton() {
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <span className={styles.walletDot} aria-hidden="true" />
+        <span className={styles.walletDot} data-linking={linking || undefined} aria-hidden="true" />
         {short}
       </button>
 
       {open ? (
         <div className={styles.walletCard} role="menu">
-          <p className={styles.walletAddress}>{address}</p>
+          <p className={styles.walletAddress}>
+            {address || "Signed in to Privy, waiting for the wallet to attach."}
+          </p>
 
-          <button type="button" className={styles.walletRow} onClick={copy}>
+          <button
+            type="button"
+            className={styles.walletRow}
+            onClick={copy}
+            disabled={!address}
+          >
             {copied ? "Copied" : "Copy address"}
           </button>
 
