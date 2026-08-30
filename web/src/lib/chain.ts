@@ -441,74 +441,74 @@ export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]
   const nowSeconds = Number((await publicClient.getBlock()).timestamp);
 
   /*
-    Read in small batches, and do not swallow a failure.
+    ONE multicall, not 48 reads.
 
-    Every owner needs two reads, so a full shard is 64 calls. Issued together
-    they collapse into a single multicall aggregate, and when that aggregate
-    is refused the per-owner catch turned all of them into empty slots: the
-    register rendered 24 stakes as 24 middots with nothing in the console. An
-    empty register and an unreadable one look identical on screen and are not
-    the same thing, so a failed batch is retried once and then counted.
+    Every owner needs stakeOf and lastChangeOf, so a full shard is 64 calls.
+    Issued as separate readContract calls they rely on viem batching them
+    heuristically, and on a free RPC tier that is answered with 429: the
+    register rendered nothing on a cold load while the console stayed clean,
+    because each call was individually "fine" and simply refused.
+
+    `multicall` sends them as a single eth_call through the Multicall3
+    aggregator, so the whole register is one request. allowFailure keeps a
+    single bad slot from voiding the rest.
   */
   const entries = [...owners.entries()].filter(([leaf]) => leaf < capacity);
-  const BATCH = 6;
+
+  const results = await publicClient.multicall({
+    allowFailure: true,
+    contracts: entries.flatMap(([, owner]) => [
+      { address: POOL, abi: POOL_ABI, functionName: "stakeOf", args: [owner] } as const,
+      { address: POOL, abi: POOL_ABI, functionName: "lastChangeOf", args: [owner] } as const,
+    ]),
+  });
+
   let failed = 0;
-
-  for (let i = 0; i < entries.length; i += BATCH) {
-    const slice = entries.slice(i, i + BATCH);
-    await Promise.all(
-      slice.map(async ([leaf, owner]) => {
-        const read = async () =>
-          Promise.all([
-            publicClient.readContract({
-              address: POOL,
-              abi: POOL_ABI,
-              functionName: "stakeOf",
-              args: [owner],
-            }) as Promise<`0x${string}`>,
-            publicClient.readContract({
-              address: POOL,
-              abi: POOL_ABI,
-              functionName: "lastChangeOf",
-              args: [owner],
-            }) as Promise<number>,
-          ]);
-
-        try {
-          let pair: [`0x${string}`, number];
-          try {
-            pair = await read();
-          } catch {
-            await new Promise((r) => setTimeout(r, 300));
-            pair = await read();
-          }
-          const [handle, lastChange] = pair;
-          slots[leaf] =
-            handle === ZERO_HANDLE
-              ? null
-              : {
-                  handle,
-                  hoursHeld: Math.max(
-                    0,
-                    Math.floor((nowSeconds - Number(lastChange)) / TIME_UNIT_SECONDS),
-                  ),
-                };
-        } catch {
-          failed++;
-          slots[leaf] = null;
-        }
-      }),
-    );
-  }
+  entries.forEach(([leaf], i) => {
+    const handleResult = results[i * 2];
+    const changeResult = results[i * 2 + 1];
+    if (handleResult?.status !== "success" || changeResult?.status !== "success") {
+      failed++;
+      slots[leaf] = null;
+      return;
+    }
+    const handle = handleResult.result as `0x${string}`;
+    slots[leaf] =
+      handle === ZERO_HANDLE
+        ? null
+        : {
+            handle,
+            hoursHeld: Math.max(
+              0,
+              Math.floor((nowSeconds - Number(changeResult.result)) / TIME_UNIT_SECONDS),
+            ),
+          };
+  });
 
   if (failed > 0) {
     console.warn(`sortis: ${failed} of ${entries.length} register slots could not be read`);
   }
 
-  try {
-    sessionStorage.setItem(SLOT_CACHE_KEY, JSON.stringify({ at: Date.now(), slots }));
-  } catch {
-    // A private window refuses storage. The reads still work, they just repeat.
+  /*
+    NEVER CACHE AN EMPTY REGISTER.
+
+    Caching unconditionally meant one failed read poisoned the next two
+    minutes: the register found no owners, wrote all-nulls, and every
+    subsequent call returned that without retrying. A shard with leaves that
+    reads as empty is a failure, not a result, and failures must not be
+    remembered.
+  */
+  const populated = slots.some((slot) => slot !== null);
+  if (populated) {
+    try {
+      sessionStorage.setItem(SLOT_CACHE_KEY, JSON.stringify({ at: Date.now(), slots }));
+    } catch {
+      // A private window refuses storage. The reads still work, they just repeat.
+    }
+  } else if (owners.size > 0) {
+    console.warn(
+      `sortis: ${owners.size} leaves are assigned but none could be read. Not caching.`,
+    );
   }
 
   return slots;

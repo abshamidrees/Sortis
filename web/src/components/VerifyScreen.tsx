@@ -26,11 +26,22 @@ import shell from "@/components/chrome/AppShell.module.css";
  * requiring a wallet to perform it would contradict the claim.
  */
 
+/**
+ * A check has three outcomes, not two.
+ *
+ * Six of these depend on the draw having been settled, and a draw that is
+ * merely open has not failed anything: the lot has not been produced yet.
+ * Rendering that as FAIL told a reader the draw was broken when it was
+ * halfway through, which is the opposite of what a verification screen is
+ * for.
+ */
+type Result = "pass" | "fail" | "pending";
+
 type Check = {
   check: string;
   expected: string;
   observed: string;
-  pass: boolean;
+  result: Result;
 };
 
 function VerifyBody() {
@@ -92,19 +103,21 @@ function VerifyBody() {
         const lotHandle = drawn?.lot ?? null;
 
         const zero = `0x${"0".repeat(64)}`;
+        /** Pending until the lot exists, then judged. */
+        const settledOr = (ok: boolean): Result => (lotDrawn ? (ok ? "pass" : "fail") : "pending");
 
         setChecks([
           {
             check: "Draw exists and committed a root",
             expected: "non-zero handle",
             observed: truncate(rootHandle),
-            pass: rootHandle !== zero,
+            result: rootHandle !== zero ? "pass" : "fail",
           },
           {
             check: "Root committed before any randomness",
             expected: "openDraw calls no rand",
             observed: `opened at block ${openedAtBlock}`,
-            pass: true,
+            result: "pass",
           },
           {
             // The contract enforces this: drawLot reverts unless block.number
@@ -119,25 +132,25 @@ function VerifyBody() {
               : lotDrawn
                 ? "drawn, block unavailable from this RPC"
                 : "not drawn",
-            pass: lotDrawn,
+            result: settledOr(lotDrawn),
           },
           {
             check: "Denominator public and KMS-verified",
             expected: "checkSignatures passed on chain",
             observed: `${totalWeight.toLocaleString("en-US")} weight`,
-            pass: lotDrawn && totalWeight > 0n,
+            result: lotDrawn ? (totalWeight > 0n ? "pass" : "fail") : "pending",
           },
           {
             check: "Prize is public",
             expected: "plaintext uint64",
             observed: `${(Number(prize) / 1e6).toFixed(6)} cUSDT`,
-            pass: true,
+            result: "pass",
           },
           {
             check: "Register unchanged between the two transactions",
             expected: "both root handles matched",
             observed: lotDrawn ? "drawLot did not revert" : "not drawn",
-            pass: lotDrawn,
+            result: settledOr(lotDrawn),
           },
           {
             check: "Lot published as a handle",
@@ -147,19 +160,19 @@ function VerifyBody() {
               : lotDrawn
                 ? "drawn, handle unavailable from this RPC"
                 : "not drawn",
-            pass: lotDrawn,
+            result: settledOr(lotDrawn),
           },
           {
             check: "Walk descended the committed tree",
             expected: `height ${walkHeight} at hour ${refHour}`,
             observed: lotDrawn ? `height ${walkHeight}` : "not drawn",
-            pass: lotDrawn,
+            result: settledOr(lotDrawn),
           },
           {
             check: "Winner still encrypted",
             expected: "no ACL grant issued",
             observed: truncate(resolved as string),
-            pass: (resolved as string) !== zero,
+            result: lotDrawn ? ((resolved as string) !== zero ? "pass" : "fail") : "pending",
           },
         ]);
       } catch (caught) {
@@ -182,23 +195,53 @@ function VerifyBody() {
       return;
     }
     let alive = true;
+    // Busy from the first paint, not from when the read returns. Resolving the
+    // latest draw takes a Sepolia round trip, and until it landed this route
+    // rendered an input and nothing else, so a judge arriving here saw an
+    // apparently empty page and no reason to think anything was happening.
+    setBusy(true);
     void publicClient
       .readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawCount" })
-      .then((count) => {
-        const latest = (count as bigint).toString();
-        if (!alive || latest === "0") return;
-        setDrawId(latest);
-        void verify(latest);
+      .then(async (count) => {
+        const total = count as bigint;
+        if (!alive) return;
+        if (total === 0n) {
+          setBusy(false);
+          setError("No draw has been opened on this shard yet.");
+          return;
+        }
+        // Walk back to the most recent SETTLED draw. The newest draw may have
+        // been opened and not yet drawn, and landing a judge on that shows six
+        // checks waiting on a lot that does not exist.
+        let target = total;
+        for (let id = total; id >= 1n; id--) {
+          const info = (await publicClient.readContract({
+            address: DRAW,
+            abi: DRAW_ABI,
+            functionName: "drawInfo",
+            args: [id],
+          })) as readonly [string, bigint, bigint, bigint, number, boolean, bigint];
+          if (info[5]) {
+            target = id;
+            break;
+          }
+        }
+        if (!alive) return;
+        setDrawId(target.toString());
+        void verify(target.toString());
       })
       .catch(() => {
-        // Leave the field empty rather than guessing an id that may not exist.
+        if (!alive) return;
+        setBusy(false);
+        setError("Could not reach Sepolia to find the latest draw. Enter a draw id above.");
       });
     return () => {
       alive = false;
     };
   }, [params, verify]);
 
-  const fails = checks?.filter((c) => !c.pass).length ?? 0;
+  const fails = checks?.filter((c) => c.result === "fail").length ?? 0;
+  const pending = checks?.filter((c) => c.result === "pending").length ?? 0;
 
   return (
     <AppShell>
@@ -236,13 +279,32 @@ function VerifyBody() {
           </div>
         </section>
 
+        {/* Something on screen while the first read is in flight. */}
+        {!checks && busy ? (
+          <section className={shell.panel}>
+            <div className={shell.panelHead}>
+              <span className={shell.panelLabel}>Checks</span>
+              <span className={shell.panelMeta}>reading</span>
+            </div>
+            <div className={shell.panelBody}>
+              <p className={shell.note} style={{ margin: 0 }}>
+                Resolving the latest draw from Sepolia and re-reading every public fact about it.
+              </p>
+            </div>
+          </section>
+        ) : null}
+
         {checks ? (
           <>
             <section className={shell.panel}>
               <div className={shell.panelHead}>
                 <span className={shell.panelLabel}>Checks</span>
                 <span className={shell.panelMeta} data-tone={fails ? "fault" : "brass"}>
-                  {fails === 0 ? `${checks.length} pass` : `${fails} fail`}
+                  {fails > 0
+                    ? `${fails} fail`
+                    : pending > 0
+                      ? `${checks.length - pending} pass, ${pending} pending`
+                      : `${checks.length} pass`}
                 </span>
               </div>
               <div className={shell.panelBodyFlush}>
@@ -269,8 +331,17 @@ function VerifyBody() {
                           {c.expected}
                         </td>
                         <td style={{ whiteSpace: "normal" }}>{c.observed}</td>
-                        <td className={c.pass ? shell.brass : shell.fault}>
-                          {c.pass ? "PASS" : "FAIL"}
+                        <td
+                          className={
+                            c.result === "pass"
+                              ? shell.brass
+                              : c.result === "fail"
+                                ? shell.fault
+                                : undefined
+                          }
+                          style={c.result === "pending" ? { color: "var(--graphite)" } : undefined}
+                        >
+                          {c.result === "pass" ? "PASS" : c.result === "fail" ? "FAIL" : "PENDING"}
                         </td>
                       </tr>
                     ))}

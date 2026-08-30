@@ -181,10 +181,14 @@ export function RegisterScreen() {
         slower. Awaiting both together meant the screen showed nothing until
         the slower one finished, which is what made this route look broken.
       */
+      /*
+        Position only. The activity table is behind a tab and its log scan is
+        the most expensive read on this route, so loading it here put three
+        windowed getLogs calls in front of the stat strip's reads and left the
+        strip saying "reading" on /app/register long after /app and
+        /app/verify had resolved. It loads when the tab is opened.
+      */
       void readPosition(address).then((pos) => setPosition(pos));
-      void readActivity(address)
-        .then((acts) => setActivity(acts))
-        .catch(() => setActivity([]));
     } catch {
       // A read failure leaves the last known state on screen rather than
       // blanking a page the user is mid-way through using.
@@ -194,6 +198,14 @@ export function RegisterScreen() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Activity, the first time its tab is opened and not before.
+  useEffect(() => {
+    if (tab !== "activity" || activity !== null || !address) return;
+    void readActivity(address)
+      .then((acts) => setActivity(acts))
+      .catch(() => setActivity([]));
+  }, [tab, activity, address]);
 
   const decrypt = useCallback(
     async (which: "stake" | "wallet") => {

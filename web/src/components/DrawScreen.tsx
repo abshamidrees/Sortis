@@ -59,6 +59,7 @@ export function DrawScreen() {
   const [slots, setSlots] = useState<(Slot | null)[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [failed, setFailed] = useState(false);
+  const [slotsUnavailable, setSlotsUnavailable] = useState(false);
 
   useEffect(() => {
     if (!CONFIGURED) return;
@@ -95,6 +96,20 @@ export function DrawScreen() {
         if (!alive) return;
         setHistory(rows);
         setSlots(handles);
+
+        /*
+          A register with leaves that reads as empty is a failed read, not an
+          empty register, and the two must not look the same. The slot handles
+          come from a LeafAssigned log scan, and a free RPC tier serves that
+          inconsistently: the same windows that return 24 events from a node
+          script come back empty in the browser. Saying so beats drawing 24
+          middots and letting a judge conclude the shard is unfilled.
+        */
+        if (next.leafCount > 0 && handles.every((h) => h === null)) {
+          setSlotsUnavailable(true);
+        } else {
+          setSlotsUnavailable(false);
+        }
       } catch {
         if (alive) setFailed(true);
       }
@@ -167,7 +182,7 @@ export function DrawScreen() {
         <section className={shell.panel}>
           <div className={shell.panelHead}>
             <span className={shell.panelLabel}>Register, shard 001</span>
-            <span className={shell.panelMeta}>
+            <span className={shell.panelMeta} data-tone={slotsUnavailable ? "fault" : undefined}>
               {state ? `${state.leafCount} / ${state.capacity}` : "reading"}
             </span>
           </div>
@@ -293,20 +308,26 @@ export function DrawScreen() {
             <div className={`${shell.panelBodyFlush} ${shell.feed}`}>
               {filtered.length ? (
                 <table className={`${shell.table} ${shell.tableTight}`}>
+                  {/*
+                    Three columns, not five.
+
+                    Root and resolved are 66-character handles, and in a third
+                    of a 1440px viewport they clipped to "0x82e……" while the
+                    verify link became "v…". A truncated table communicates
+                    less than no table. Both handles are shown in full in
+                    CURRENT DRAW beside this, and Verify shows them per draw,
+                    so nothing is lost by dropping them here.
+                  */}
                   <colgroup>
-                    <col style={{ width: "12%" }} />
-                    <col style={{ width: "26%" }} />
-                    <col style={{ width: "24%" }} />
-                    <col style={{ width: "24%" }} />
-                    <col style={{ width: "14%" }} />
+                    <col style={{ width: "18%" }} />
+                    <col style={{ width: "46%" }} />
+                    <col style={{ width: "36%" }} />
                   </colgroup>
                   <thead>
                     <tr>
                       <th>ID</th>
                       <th>Block</th>
-                      <th>Root</th>
-                      <th>Resolved</th>
-                      <th />
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -314,10 +335,10 @@ export function DrawScreen() {
                       <tr key={row.id.toString()}>
                         <td>#{row.id.toString()}</td>
                         <td>{row.openedAtBlock.toString()}</td>
-                        <td>{truncate(row.rootHandle, 3)}</td>
-                        <td>{truncate(row.resolvedLeaf, 3)}</td>
                         <td>
-                          <Link href={`/app/verify?draw=${row.id}`}>verify</Link>
+                          <Link href={`/app/verify?draw=${row.id}`}>
+                            {row.lotDrawn ? "drawn, verify" : "open"}
+                          </Link>
                         </td>
                       </tr>
                     ))}
