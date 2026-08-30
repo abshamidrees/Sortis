@@ -3,7 +3,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useAccount } from "wagmi";
 import { PrivyProvider, useWallets } from "@privy-io/react-auth";
-import { WagmiProvider as PrivyWagmiProvider, useSetActiveWallet } from "@privy-io/wagmi";
+import {
+  WagmiProvider as PrivyWagmiProvider,
+  useSetActiveWallet,
+} from "@privy-io/wagmi";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -61,7 +64,8 @@ function WalletBridge({ children }: { children: ReactNode }) {
     thing we care about changes.
   */
   const privyAddress = wallet?.address;
-  const attached = isConnected && address?.toLowerCase() === privyAddress?.toLowerCase();
+  const attached =
+    isConnected && address?.toLowerCase() === privyAddress?.toLowerCase();
 
   useEffect(() => {
     if (!wallet || attached) return;

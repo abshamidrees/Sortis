@@ -3,6 +3,7 @@ import { expect } from "chai";
 import {
   guardCommit,
   guardRelease,
+  readTxError,
   toBaseUnits,
   formatUnits,
   SEPOLIA_ID,
@@ -22,6 +23,8 @@ import {
  * transaction is built, so it is testable without a chain, a wallet or a
  * rendered component.
  */
+const ELLIPSIS = String.fromCharCode(0x2026);
+
 describe("the four named error states", function () {
   const ok = { chainId: SEPOLIA_ID, isOperator: true, walletClear: 10_000_000n, amount: 1_000_000n };
 
@@ -123,5 +126,74 @@ describe("the four named error states", function () {
         expect(formatUnits(toBaseUnits(v))).to.equal(v);
       }
     });
+  });
+});
+
+/**
+ * What a failed transaction is told to say.
+ *
+ * The guards above run BEFORE a send. This is the half that runs after one,
+ * and it exists because the screen was blaming the contract for failures no
+ * contract took part in. viem wraps everything as `The contract function
+ * "mint" reverted with the following reason:`, so a wallet holding no Sepolia
+ * ETH produced a message that read like a bug in SortisPool, and a fixed
+ * 90 character slice ended it mid-word at "eth_se".
+ *
+ * The strings below are real, copied from a wallet and from an Infura
+ * response, because a matcher tested only against text I wrote myself proves
+ * nothing about the text that actually arrives.
+ */
+describe("reading a failed transaction", function () {
+  it("names an empty gas balance instead of blaming the contract", function () {
+    const real = new Error(
+      'The contract function "mint" reverted with the following reason:\n' +
+        "RPC 0x1 Infura eth_sendRawTransaction: insufficient funds for transfer",
+    );
+    const fault = readTxError(real);
+    expect(fault.kind).to.equal("gas");
+    expect(fault.message).to.contain("no Sepolia ETH");
+    // The word "contract" must not appear. No contract failed here.
+    expect(fault.message.toLowerCase()).to.not.contain("contract");
+  });
+
+  it("does not call a declined signature a failure of the chain", function () {
+    const fault = readTxError(new Error("User rejected the request."));
+    expect(fault.kind).to.equal("declined");
+    expect(fault.message).to.contain("Nothing was sent");
+  });
+
+  it("names the draw interval rather than surfacing the selector", function () {
+    const fault = readTxError(new Error("execution reverted: DrawTooSoon(1756500000)"));
+    expect(fault.kind).to.equal("interval");
+    expect(fault.message).to.contain("interval");
+  });
+
+  it("names a rate limited node as the node, not the transaction", function () {
+    const fault = readTxError(new Error("HTTP request failed. Status: 429 Too Many Requests"));
+    expect(fault.kind).to.equal("rpc");
+    expect(fault.message).to.contain("rate limiting");
+  });
+
+  it("points a missing operator grant at the control that fixes it", function () {
+    const fault = readTxError(new Error("reverted: ERC7984UnauthorizedSpender(0xa57F)"));
+    expect(fault.kind).to.equal("operator");
+    expect(fault.message).to.contain("Mint 5 cUSDT");
+  });
+
+  it("cuts an unrecognised message on a word boundary, not mid-word", function () {
+    const long = "Something went wrong " + "verylongtoken ".repeat(20);
+    const fault = readTxError(new Error(long));
+    expect(fault.kind).to.equal("unknown");
+    if (fault.message.endsWith(ELLIPSIS)) {
+      const body = fault.message.slice(0, -1);
+      // The last thing kept is a whole word, so no partial token survives.
+      expect(body.endsWith("verylongtoken")).to.equal(true);
+    }
+  });
+
+  it("survives a thrown value that is not an Error at all", function () {
+    expect(() => readTxError("plain string")).to.not.throw();
+    expect(() => readTxError(undefined)).to.not.throw();
+    expect(readTxError({ shortMessage: "insufficient funds for gas" }).kind).to.equal("gas");
   });
 });

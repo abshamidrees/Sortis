@@ -14,13 +14,17 @@ import { ADDRESSES, RPC_FALLBACK } from "./measurements";
  * log shape from and every `log.args` comes back as `never`.
  */
 const EV_DRAWN = parseAbiItem(
-  "event Drawn(uint256 indexed drawId, bytes32 lotHandle, bytes32 resolvedLeafHandle, uint64 totalWeight)",
+  "event Drawn(uint256 indexed drawId, bytes32 lotHandle, bytes32 resolvedLeafHandle, uint64 totalWeight)"
 );
 const EV_LEAF_ASSIGNED = parseAbiItem(
-  "event LeafAssigned(address indexed owner, uint256 indexed leaf)",
+  "event LeafAssigned(address indexed owner, uint256 indexed leaf)"
 );
-const EV_COMMITTED = parseAbiItem("event Committed(address indexed owner, uint256 indexed leaf)");
-const EV_RELEASED = parseAbiItem("event Released(address indexed owner, uint256 indexed leaf)");
+const EV_COMMITTED = parseAbiItem(
+  "event Committed(address indexed owner, uint256 indexed leaf)"
+);
+const EV_RELEASED = parseAbiItem(
+  "event Released(address indexed owner, uint256 indexed leaf)"
+);
 
 /**
  * Reads of the deployed shard.
@@ -62,7 +66,10 @@ export const publicClient = createPublicClient({
  * dropped read used to blank the stat strip and put "Chain unreachable" under
  * a register that was perfectly reachable.
  */
-export async function resilientRead<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+export async function resilientRead<T>(
+  fn: () => Promise<T>,
+  attempts = 3
+): Promise<T> {
   let last: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -80,7 +87,9 @@ export const DRAW = ADDRESSES.draw as Address;
 export const CUSDT = ADDRESSES.cUSDT as Address;
 export const YIELD = (process.env.NEXT_PUBLIC_YIELD_ADDRESS ?? "") as Address;
 
-export const CONFIGURED = Boolean(ADDRESSES.pool && ADDRESSES.draw && ADDRESSES.cUSDT);
+export const CONFIGURED = Boolean(
+  ADDRESSES.pool && ADDRESSES.draw && ADDRESSES.cUSDT
+);
 
 /**
  * Earliest block worth scanning for this deployment's logs.
@@ -90,7 +99,9 @@ export const CONFIGURED = Boolean(ADDRESSES.pool && ADDRESSES.draw && ADDRESSES.
  * succeeded. Scanning from the deployment instead keeps the range small and
  * costs nothing, since nothing before it can contain this contract's events.
  */
-export const DEPLOY_BLOCK = BigInt(process.env.NEXT_PUBLIC_DEPLOY_BLOCK ?? "11578000");
+export const DEPLOY_BLOCK = BigInt(
+  process.env.NEXT_PUBLIC_DEPLOY_BLOCK ?? "11578000"
+);
 
 /**
  * Largest block span one getLogs call may cover.
@@ -111,9 +122,12 @@ const LOG_WINDOW = 9_000n;
  * table: a partial history is useful and an error page is not.
  */
 async function getLogsChunked<T>(
-  params: Omit<Parameters<typeof publicClient.getLogs>[0], "fromBlock" | "toBlock">,
+  params: Omit<
+    Parameters<typeof publicClient.getLogs>[0],
+    "fromBlock" | "toBlock"
+  >,
   fromBlock: bigint,
-  toBlock: bigint,
+  toBlock: bigint
 ): Promise<T[]> {
   const out: T[] = [];
   let failedWindows = 0;
@@ -121,7 +135,11 @@ async function getLogsChunked<T>(
   for (let start = fromBlock; start <= toBlock; start += LOG_WINDOW + 1n) {
     const end = start + LOG_WINDOW > toBlock ? toBlock : start + LOG_WINDOW;
     try {
-      const logs = await publicClient.getLogs({ ...params, fromBlock: start, toBlock: end } as never);
+      const logs = await publicClient.getLogs({
+        ...params,
+        fromBlock: start,
+        toBlock: end,
+      } as never);
       out.push(...(logs as unknown as T[]));
     } catch (error) {
       // Skip the window, but say so. Swallowing this silently is how the
@@ -168,7 +186,10 @@ export function truncate(handle: string | null | undefined, size = 4): string {
 /** cUSDT has 6 decimals, matching USDT. */
 export function formatUnits6(value: bigint): string {
   const whole = value / 1_000_000n;
-  const frac = (value % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  const frac = (value % 1_000_000n)
+    .toString()
+    .padStart(6, "0")
+    .replace(/0+$/, "");
   return frac ? `${whole}.${frac}` : `${whole}`;
 }
 
@@ -225,60 +246,85 @@ export type DrawRow = {
 
 async function readDraw(id: bigint): Promise<DrawRow> {
   const [info, resolved] = await Promise.all([
-        publicClient.readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawInfo", args: [id] }),
-        publicClient.readContract({
-          address: DRAW,
-          abi: DRAW_ABI,
-          functionName: "resolvedLeafHandle",
-          args: [id],
-        }),
-      ]);
-      const [rootHandle, openedAtBlock, prize, totalWeight, walkHeight, lotDrawn, refHour] =
-        info as readonly [`0x${string}`, bigint, bigint, bigint, number, boolean, bigint];
-      return {
-        id,
-        rootHandle,
-        openedAtBlock,
-        prize,
-        totalWeight,
-        walkHeight,
-        lotDrawn,
-        refHour,
-        resolvedLeaf: resolved as `0x${string}`,
-        status: lotDrawn ? "drawn" : "open",
-        lotHandle: null,
-        drawnAtBlock: null,
-      };
-    }
+    publicClient.readContract({
+      address: DRAW,
+      abi: DRAW_ABI,
+      functionName: "drawInfo",
+      args: [id],
+    }),
+    publicClient.readContract({
+      address: DRAW,
+      abi: DRAW_ABI,
+      functionName: "resolvedLeafHandle",
+      args: [id],
+    }),
+  ]);
+  const [
+    rootHandle,
+    openedAtBlock,
+    prize,
+    totalWeight,
+    walkHeight,
+    lotDrawn,
+    refHour,
+  ] = info as readonly [
+    `0x${string}`,
+    bigint,
+    bigint,
+    bigint,
+    number,
+    boolean,
+    bigint
+  ];
+  return {
+    id,
+    rootHandle,
+    openedAtBlock,
+    prize,
+    totalWeight,
+    walkHeight,
+    lotDrawn,
+    refHour,
+    resolvedLeaf: resolved as `0x${string}`,
+    status: lotDrawn ? "drawn" : "open",
+    lotHandle: null,
+    drawnAtBlock: null,
+  };
+}
 
-    /**
-     * The Drawn events, keyed by draw id.
-     *
-     * The lot and the resolved leaf are published as HANDLES. Publishing them is
-     * what makes the walk auditable, and it costs nothing because they decrypt for
-     * nobody without a grant, and no grant is issued for either.
-     */
-    async function readDrawnEvents(): Promise<Map<string, { lot: `0x${string}`; block: bigint }>> {
-      const out = new Map<string, { lot: `0x${string}`; block: bigint }>();
-      try {
-        const head = await publicClient.getBlockNumber();
-        const logs = await getLogsChunked<{
-          args: { drawId?: bigint; lotHandle?: `0x${string}` };
-          blockNumber: bigint | null;
-        }>({ address: DRAW, event: EV_DRAWN }, DEPLOY_BLOCK, head);
-        for (const log of logs) {
-          if (log.args.drawId !== undefined && log.args.lotHandle !== undefined) {
-            out.set(log.args.drawId.toString(), { lot: log.args.lotHandle, block: log.blockNumber! });
-          }
-        }
-      } catch {
-        // A node that will not serve a full log range is not a reason to fail the
-        // whole page. The handles are supplementary; drawInfo carries the rest.
+/**
+ * The Drawn events, keyed by draw id.
+ *
+ * The lot and the resolved leaf are published as HANDLES. Publishing them is
+ * what makes the walk auditable, and it costs nothing because they decrypt for
+ * nobody without a grant, and no grant is issued for either.
+ */
+async function readDrawnEvents(): Promise<
+  Map<string, { lot: `0x${string}`; block: bigint }>
+> {
+  const out = new Map<string, { lot: `0x${string}`; block: bigint }>();
+  try {
+    const head = await publicClient.getBlockNumber();
+    const logs = await getLogsChunked<{
+      args: { drawId?: bigint; lotHandle?: `0x${string}` };
+      blockNumber: bigint | null;
+    }>({ address: DRAW, event: EV_DRAWN }, DEPLOY_BLOCK, head);
+    for (const log of logs) {
+      if (log.args.drawId !== undefined && log.args.lotHandle !== undefined) {
+        out.set(log.args.drawId.toString(), {
+          lot: log.args.lotHandle,
+          block: log.blockNumber!,
+        });
       }
-      return out;
     }
+  } catch {
+    // A node that will not serve a full log range is not a reason to fail the
+    // whole page. The handles are supplementary; drawInfo carries the rest.
+  }
+  return out;
+}
 
-    /**
+/**
  * The Drawn event for one draw, through the chunker.
  *
  * Exported because Verify needs it. It used to call `publicClient.getLogs`
@@ -288,7 +334,7 @@ async function readDraw(id: bigint): Promise<DrawRow> {
  * production while every other log query on the site worked.
  */
 export async function readDrawnEvent(
-  drawId: bigint,
+  drawId: bigint
 ): Promise<{ lot: `0x${string}`; block: bigint } | null> {
   const head = await publicClient.getBlockNumber();
   const logs = await getLogsChunked<{
@@ -302,18 +348,49 @@ export async function readDrawnEvent(
 }
 
 /** Everything the stat strip shows, in one round of reads. */
-    export async function readShardState(): Promise<ShardState> {
-      const [depth, capacity, leafCount, activeHeight, hour, drawCount, blockNumber] = await resilientRead(
-        () =>
-          Promise.all([
-        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "DEPTH" }),
-        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "capacity" }),
-        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "leafCount" }),
-        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "activeHeight" }),
-        publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "timeUnitsNow" }),
-        publicClient.readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawCount" }),
-        publicClient.getBlockNumber(),
-      ]),
+export async function readShardState(): Promise<ShardState> {
+  const [
+    depth,
+    capacity,
+    leafCount,
+    activeHeight,
+    hour,
+    drawCount,
+    blockNumber,
+  ] = await resilientRead(() =>
+    Promise.all([
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "DEPTH",
+      }),
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "capacity",
+      }),
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "leafCount",
+      }),
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "activeHeight",
+      }),
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "timeUnitsNow",
+      }),
+      publicClient.readContract({
+        address: DRAW,
+        abi: DRAW_ABI,
+        functionName: "drawCount",
+      }),
+      publicClient.getBlockNumber(),
+    ])
   );
 
   const count = drawCount as bigint;
@@ -364,10 +441,23 @@ export async function readDrawnEvent(
 export async function readDrawHistory(count: bigint): Promise<DrawRow[]> {
   const ids: bigint[] = [];
   for (let i = count; i > 0n; i--) ids.push(i);
-  const [rows, drawn] = await Promise.all([Promise.all(ids.map(readDraw)), readDrawnEvents()]);
+  /*
+    Retried, like the stat strip's read and unlike this one used to be.
+
+    resilientRead existed and was wired into exactly one call, the strip's
+    multicall. So a rate limited free tier served the strip and refused this,
+    and the page rendered "Chain unreachable" in the history panel directly
+    beneath a header showing a live draw id. One dropped packet should not
+    produce two contradictory claims on the same screen.
+  */
+  const [rows, drawn] = await resilientRead(() =>
+    Promise.all([Promise.all(ids.map(readDraw)), readDrawnEvents()])
+  );
   return rows.map((row) => {
     const event = drawn.get(row.id.toString());
-    return event ? { ...row, lotHandle: event.lot, drawnAtBlock: event.block } : row;
+    return event
+      ? { ...row, lotHandle: event.lot, drawnAtBlock: event.block }
+      : row;
   });
 }
 
@@ -417,18 +507,18 @@ function readSlotCache(): (Slot | null)[] | null {
  * 429 by the RPC. The slots only change when somebody commits or releases, so
  * a short cache costs nothing and removes most of the traffic.
  */
-export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]> {
+export async function readSlotHandles(
+  capacity: number
+): Promise<(Slot | null)[]> {
   const cached = readSlotCache();
   if (cached) return cached;
 
   const slots: (Slot | null)[] = Array.from({ length: capacity }, () => null);
 
   const head = await publicClient.getBlockNumber();
-  const logs = await getLogsChunked<{ args: { owner?: Address; leaf?: bigint } }>(
-    { address: POOL, event: EV_LEAF_ASSIGNED },
-    DEPLOY_BLOCK,
-    head,
-  );
+  const logs = await getLogsChunked<{
+    args: { owner?: Address; leaf?: bigint };
+  }>({ address: POOL, event: EV_LEAF_ASSIGNED }, DEPLOY_BLOCK, head);
 
   const owners = new Map<number, Address>();
   for (const log of logs) {
@@ -458,8 +548,18 @@ export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]
   const results = await publicClient.multicall({
     allowFailure: true,
     contracts: entries.flatMap(([, owner]) => [
-      { address: POOL, abi: POOL_ABI, functionName: "stakeOf", args: [owner] } as const,
-      { address: POOL, abi: POOL_ABI, functionName: "lastChangeOf", args: [owner] } as const,
+      {
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "stakeOf",
+        args: [owner],
+      } as const,
+      {
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "lastChangeOf",
+        args: [owner],
+      } as const,
     ]),
   });
 
@@ -467,7 +567,10 @@ export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]
   entries.forEach(([leaf], i) => {
     const handleResult = results[i * 2];
     const changeResult = results[i * 2 + 1];
-    if (handleResult?.status !== "success" || changeResult?.status !== "success") {
+    if (
+      handleResult?.status !== "success" ||
+      changeResult?.status !== "success"
+    ) {
       failed++;
       slots[leaf] = null;
       return;
@@ -480,13 +583,17 @@ export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]
             handle,
             hoursHeld: Math.max(
               0,
-              Math.floor((nowSeconds - Number(changeResult.result)) / TIME_UNIT_SECONDS),
+              Math.floor(
+                (nowSeconds - Number(changeResult.result)) / TIME_UNIT_SECONDS
+              )
             ),
           };
   });
 
   if (failed > 0) {
-    console.warn(`sortis: ${failed} of ${entries.length} register slots could not be read`);
+    console.warn(
+      `sortis: ${failed} of ${entries.length} register slots could not be read`
+    );
   }
 
   /*
@@ -501,13 +608,16 @@ export async function readSlotHandles(capacity: number): Promise<(Slot | null)[]
   const populated = slots.some((slot) => slot !== null);
   if (populated) {
     try {
-      sessionStorage.setItem(SLOT_CACHE_KEY, JSON.stringify({ at: Date.now(), slots }));
+      sessionStorage.setItem(
+        SLOT_CACHE_KEY,
+        JSON.stringify({ at: Date.now(), slots })
+      );
     } catch {
       // A private window refuses storage. The reads still work, they just repeat.
     }
   } else if (owners.size > 0) {
     console.warn(
-      `sortis: ${owners.size} leaves are assigned but none could be read. Not caching.`,
+      `sortis: ${owners.size} leaves are assigned but none could be read. Not caching.`
     );
   }
 
@@ -530,8 +640,15 @@ export type Position = {
 };
 
 export async function readPosition(account: Address): Promise<Position> {
-  const [hasLeaf, stakeHandle, weightHandle, lastChange, walletHandle, isOperator] =
-    await Promise.all([
+  const [
+    hasLeaf,
+    stakeHandle,
+    weightHandle,
+    lastChange,
+    walletHandle,
+    isOperator,
+  ] = await resilientRead(() =>
+    Promise.all([
       publicClient.readContract({
         address: POOL,
         abi: POOL_ABI,
@@ -568,13 +685,24 @@ export async function readPosition(account: Address): Promise<Position> {
         functionName: "isOperator",
         args: [account, POOL],
       }),
-    ]);
+    ])
+  );
 
-  const [block, leafCount, capacity] = await Promise.all([
-    publicClient.getBlock(),
-    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "leafCount" }),
-    publicClient.readContract({ address: POOL, abi: POOL_ABI, functionName: "capacity" }),
-  ]);
+  const [block, leafCount, capacity] = await resilientRead(() =>
+    Promise.all([
+      publicClient.getBlock(),
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "leafCount",
+      }),
+      publicClient.readContract({
+        address: POOL,
+        abi: POOL_ABI,
+        functionName: "capacity",
+      }),
+    ])
+  );
 
   let leaf: number | null = null;
   if (hasLeaf as boolean) {
@@ -584,7 +712,7 @@ export async function readPosition(account: Address): Promise<Position> {
         abi: POOL_ABI,
         functionName: "leafOf",
         args: [account],
-      }),
+      })
     );
   }
 
@@ -598,7 +726,9 @@ export async function readPosition(account: Address): Promise<Position> {
     isOperator: isOperator as boolean,
     hoursHeld: Math.max(
       0,
-      Math.floor((Number(block.timestamp) - Number(lastChange)) / TIME_UNIT_SECONDS),
+      Math.floor(
+        (Number(block.timestamp) - Number(lastChange)) / TIME_UNIT_SECONDS
+      )
     ),
     leafCount: Number(leafCount),
     capacity: Number(capacity),
@@ -623,9 +753,13 @@ export async function readActivity(account: Address): Promise<ActivityRow[]> {
   // signature, so a single filter matches both and halves the number of
   // windows the provider has to serve.
   const logs = await getLogsChunked<PoolLog & { eventName?: string }>(
-    { address: POOL, events: [EV_COMMITTED, EV_RELEASED], args: { owner: account } },
+    {
+      address: POOL,
+      events: [EV_COMMITTED, EV_RELEASED],
+      args: { owner: account },
+    },
     DEPLOY_BLOCK,
-    head,
+    head
   );
 
   const committed = logs.filter((l) => l.eventName === "Committed");

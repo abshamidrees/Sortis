@@ -1,11 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount, useChainId, useSwitchChain, useWriteContract, usePublicClient } from "wagmi";
+import {
+  useAccount,
+  useChainId,
+  useSwitchChain,
+  useWriteContract,
+  usePublicClient,
+} from "wagmi";
 
 import { DRAW_ABI } from "@/lib/abi";
 import { DRAW, publicClient } from "@/lib/chain";
-import { SEPOLIA_ID } from "@/lib/guards";
+import { readTxError, SEPOLIA_ID } from "@/lib/guards";
 import shell from "@/components/chrome/AppShell.module.css";
 
 /**
@@ -35,9 +41,10 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
 
   const [remaining, setRemaining] = useState<number | null>(null);
   const [interval, setIntervalSeconds] = useState<number | null>(null);
-  const [state, setState] = useState<{ status: "idle" | "pending" | "done" | "failed"; detail?: string }>(
-    { status: "idle" },
-  );
+  const [state, setState] = useState<{
+    status: "idle" | "pending" | "done" | "failed";
+    detail?: string;
+  }>({ status: "idle" });
 
   const refresh = useCallback(async () => {
     try {
@@ -47,7 +54,11 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
           abi: DRAW_ABI,
           functionName: "secondsUntilNextDraw",
         }),
-        publicClient.readContract({ address: DRAW, abi: DRAW_ABI, functionName: "minDrawInterval" }),
+        publicClient.readContract({
+          address: DRAW,
+          abi: DRAW_ABI,
+          functionName: "minDrawInterval",
+        }),
       ]);
       setRemaining(Number(left as bigint));
       setIntervalSeconds(Number(every as bigint));
@@ -65,7 +76,10 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
   // Count down locally between reads so the number moves.
   useEffect(() => {
     if (remaining === null || remaining <= 0) return;
-    const tick = window.setInterval(() => setRemaining((r) => (r === null ? r : Math.max(0, r - 1))), 1_000);
+    const tick = window.setInterval(
+      () => setRemaining((r) => (r === null ? r : Math.max(0, r - 1))),
+      1_000
+    );
     return () => window.clearInterval(tick);
   }, [remaining]);
 
@@ -83,13 +97,9 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
       await refresh();
       onOpened?.();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setState({
-        status: "failed",
-        detail: /DrawTooSoon/.test(message)
-          ? "Too soon. The interval since the last draw has not elapsed."
-          : message.slice(0, 90),
-      });
+      // readTxError already names DrawTooSoon, and it also names the case this
+      // used to blame the contract for: a wallet with no Sepolia ETH.
+      setState({ status: "failed", detail: readTxError(error).message });
     }
   }, [writeContractAsync, wagmiClient, refresh, onOpened]);
 
@@ -100,8 +110,11 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
     remaining === null
       ? "reading"
       : remaining === 0
-        ? "open now"
-        : `${Math.floor(remaining / 60)}m ${String(remaining % 60).padStart(2, "0")}s`;
+      ? "open now"
+      : `${Math.floor(remaining / 60)}m ${String(remaining % 60).padStart(
+          2,
+          "0"
+        )}s`;
 
   return (
     <section className={shell.panel}>
@@ -112,13 +125,18 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
       <div className={shell.panelBody}>
         <div className={shell.kv}>
           <span className={shell.kvKey}>Next draw</span>
-          <span className={shell.kvValue} data-tone={openable ? "brass" : undefined}>
+          <span
+            className={shell.kvValue}
+            data-tone={openable ? "brass" : undefined}
+          >
             {countdown}
           </span>
 
           <span className={shell.kvKey}>Interval</span>
           <span className={shell.kvValue}>
-            {interval === null ? "reading" : `${Math.round(interval / 60)} minutes`}
+            {interval === null
+              ? "reading"
+              : `${Math.round(interval / 60)} minutes`}
             <span className={shell.kvAside}>minimum between draws</span>
           </span>
         </div>
@@ -148,7 +166,11 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
             >
               {state.status === "pending" ? state.detail : "Open draw"}
             </button>
-            <p className={`${shell.cost} ${state.status === "failed" ? shell.fault : ""}`}>
+            <p
+              className={`${shell.cost} ${
+                state.status === "failed" ? shell.fault : ""
+              }`}
+            >
               {state.status === "idle" || state.status === "done"
                 ? "No owner check. The only gate is the interval above."
                 : state.detail}
@@ -161,9 +183,10 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
           the control that would otherwise make it look broken.
         */}
         <p className={shell.note}>
-          A stake carries no weight until it has been in the pool a full hour, so a deposit made
-          moments before a draw cannot take the prize. Settling the draw needs a KMS proof fetched
-          off chain; see the README for the keeper flow.
+          A stake carries no weight until it has been in the pool a full hour,
+          so a deposit made moments before a draw cannot take the prize.
+          Settling the draw needs a KMS proof fetched off chain; see the README
+          for the keeper flow.
         </p>
       </div>
     </section>

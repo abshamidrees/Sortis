@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   useAccount,
+  useBalance,
   useChainId,
   useSignTypedData,
   useSwitchChain,
@@ -24,7 +25,16 @@ import {
   type Position,
 } from "@/lib/chain";
 import { useFhevm } from "@/lib/fhevm";
-import { guardCommit, guardRelease, toBaseUnits, SEPOLIA_ID, type Guard } from "@/lib/guards";
+import {
+  guardCommit,
+  guardGas,
+  guardRelease,
+  readTxError,
+  toBaseUnits,
+  SEPOLIA_FAUCET,
+  SEPOLIA_ID,
+  type Guard,
+} from "@/lib/guards";
 import shell from "@/components/chrome/AppShell.module.css";
 
 /**
@@ -37,7 +47,10 @@ import shell from "@/components/chrome/AppShell.module.css";
  * live here and both have to work end to end from a connected wallet.
  */
 
-type TxState = { status: "idle" | "pending" | "mined" | "failed"; detail?: string };
+type TxState = {
+  status: "idle" | "pending" | "mined" | "failed";
+  detail?: string;
+};
 
 const FAR_FUTURE = 2n ** 47n;
 
@@ -65,8 +78,17 @@ function EncryptedValue({
   onDecrypt,
   onHide,
   progress,
+  /**
+   * What to show when there is no handle.
+   *
+   * "not set" is only true once the position has actually been read. Before
+   * that, and after a read that failed, the honest word is different and the
+   * caller is the only one that knows which.
+   */
+  missing = "not set",
 }: {
   handle: `0x${string}` | undefined;
+  missing?: string;
   clear: bigint | null;
   busy: boolean;
   disabled: boolean;
@@ -75,11 +97,14 @@ function EncryptedValue({
   progress: { phase: string; message: string };
 }) {
   const state = clear !== null ? "revealed" : busy ? "working" : "sealed";
+  const sealedText = handle ? truncate(handle) : missing;
 
   return (
     <span className={shell.kvValue}>
       <span className="ciphertext" data-state={state}>
-        {clear !== null ? `${(Number(clear) / 1e6).toFixed(6)} cUSDT` : truncate(handle)}
+        {clear !== null
+          ? `${(Number(clear) / 1e6).toFixed(6)} cUSDT`
+          : sealedText}
       </span>
 
       {clear !== null ? (
@@ -99,7 +124,8 @@ function EncryptedValue({
 
       {busy ? (
         <span className={shell.progress}>
-          {progress.phase === "fetching-keys" || progress.phase === "loading-sdk"
+          {progress.phase === "fetching-keys" ||
+          progress.phase === "loading-sdk"
             ? progress.message
             : "Signing EIP-712, then asking the relayer."}
         </span>
@@ -143,6 +169,11 @@ function CostPanel() {
 
 export function RegisterScreen() {
   const { address, isConnected } = useAccount();
+  // Public, unencrypted, and the thing that actually stops a judge mid-flow.
+  const { data: gasBalance } = useBalance({
+    address,
+    query: { enabled: Boolean(address) },
+  });
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
   const publicClient = usePublicClient();
@@ -151,6 +182,18 @@ export function RegisterScreen() {
   const { progress, encryptAmount, userDecrypt } = useFhevm();
 
   const [position, setPosition] = useState<Position | null>(null);
+  /*
+    A failed read is NOT a negative fact.
+
+    Every row below used `position?.x ? a : b`, so a null position rendered
+    "no leaf yet", "not set" and "not authorised" in fault red. A rate limited
+    RPC therefore drew a confident picture of an empty, unauthorised account
+    for a wallet that had a leaf, a stake and an operator grant a minute
+    earlier. Three states, not two: not read yet, read, could not read.
+  */
+  const [positionState, setPositionState] = useState<
+    "loading" | "ready" | "failed"
+  >("loading");
   /**
    * null means "not read yet", not "empty".
    *
@@ -188,10 +231,19 @@ export function RegisterScreen() {
         strip saying "reading" on /app/register long after /app and
         /app/verify had resolved. It loads when the tab is opened.
       */
-      void readPosition(address).then((pos) => setPosition(pos));
+      void readPosition(address)
+        .then((pos) => {
+          setPosition(pos);
+          setPositionState("ready");
+        })
+        .catch(() => {
+          // Keep whatever was last read on screen. Only the state changes, so
+          // a refresh that fails mid-session degrades to a stale reading
+          // rather than to a wrong one.
+          setPositionState((prev) => (prev === "ready" ? "ready" : "failed"));
+        });
     } catch {
-      // A read failure leaves the last known state on screen rather than
-      // blanking a page the user is mid-way through using.
+      setPositionState((prev) => (prev === "ready" ? "ready" : "failed"));
     }
   }, [address]);
 
@@ -212,10 +264,11 @@ export function RegisterScreen() {
       if (!address || !position) return;
       setDecrypting(which);
       try {
-        const handle = which === "stake" ? position.stakeHandle : position.walletHandle;
+        const handle =
+          which === "stake" ? position.stakeHandle : position.walletHandle;
         const contract = which === "stake" ? POOL : CUSDT;
         const value = await userDecrypt(handle, contract, address, (args) =>
-          signTypedDataAsync(args as never),
+          signTypedDataAsync(args as never)
         );
         if (which === "stake") setStakeClear(value);
         else setWalletClear(value);
@@ -226,7 +279,7 @@ export function RegisterScreen() {
         setDecrypting(null);
       }
     },
-    [address, position, userDecrypt, signTypedDataAsync],
+    [address, position, userDecrypt, signTypedDataAsync]
   );
 
   const runFaucet = useCallback(async () => {
@@ -253,12 +306,15 @@ export function RegisterScreen() {
         });
         await publicClient?.waitForTransactionReceipt({ hash: op });
       }
-      setFaucetTx({ status: "mined", detail: "5 cUSDT minted, pool authorised" });
+      setFaucetTx({
+        status: "mined",
+        detail: "5 cUSDT minted, pool authorised",
+      });
       await refresh();
     } catch (error) {
       setFaucetTx({
         status: "failed",
-        detail: error instanceof Error ? error.message.slice(0, 80) : "Failed",
+        detail: readTxError(error).message,
       });
     }
   }, [address, writeContractAsync, publicClient, position, refresh]);
@@ -272,7 +328,11 @@ export function RegisterScreen() {
       setTx({ status: "pending", detail: "Encrypting the amount" });
       try {
         const amount = toBaseUnits(raw);
-        const { handle, inputProof } = await encryptAmount(POOL, address, amount);
+        const { handle, inputProof } = await encryptAmount(
+          POOL,
+          address,
+          amount
+        );
 
         setTx({ status: "pending", detail: "Waiting for signature" });
         const hash = await writeContractAsync({
@@ -292,11 +352,19 @@ export function RegisterScreen() {
       } catch (error) {
         setTx({
           status: "failed",
-          detail: error instanceof Error ? error.message.slice(0, 90) : "Failed",
+          detail: readTxError(error).message,
         });
       }
     },
-    [address, commitAmount, releaseAmount, encryptAmount, writeContractAsync, publicClient, refresh],
+    [
+      address,
+      commitAmount,
+      releaseAmount,
+      encryptAmount,
+      writeContractAsync,
+      publicClient,
+      refresh,
+    ]
   );
 
   /*
@@ -321,12 +389,18 @@ export function RegisterScreen() {
               <div className={shell.panelBody}>
                 <div className={shell.kv}>
                   <span className={shell.kvKey}>Stake</span>
-                  <span className={shell.kvValue} style={{ color: "var(--graphite)" }}>
+                  <span
+                    className={shell.kvValue}
+                    style={{ color: "var(--graphite)" }}
+                  >
                     connect to read
                   </span>
 
                   <span className={shell.kvKey}>Wallet</span>
-                  <span className={shell.kvValue} style={{ color: "var(--graphite)" }}>
+                  <span
+                    className={shell.kvValue}
+                    style={{ color: "var(--graphite)" }}
+                  >
                     connect to read
                   </span>
 
@@ -342,7 +416,9 @@ export function RegisterScreen() {
                   <span className={shell.kvKey}>Decryption</span>
                   <span className={shell.kvValue}>
                     EIP-712
-                    <span className={shell.kvAside}>signed in your wallet, read in your browser</span>
+                    <span className={shell.kvAside}>
+                      signed in your wallet, read in your browser
+                    </span>
                   </span>
                 </div>
               </div>
@@ -350,7 +426,9 @@ export function RegisterScreen() {
 
             <section className={shell.panel}>
               <div className={shell.panelHead}>
-                <span className={shell.panelLabel}>What happens on connect</span>
+                <span className={shell.panelLabel}>
+                  What happens on connect
+                </span>
                 <span className={shell.panelMeta}>three steps</span>
               </div>
               <div className={shell.panelBodyFlush}>
@@ -358,15 +436,23 @@ export function RegisterScreen() {
                   <tbody>
                     <tr>
                       <td style={{ width: "10%" }}>1</td>
-                      <td>Mint 5 cUSDT from the faucet and authorise the pool to pull</td>
+                      <td>
+                        Mint 5 cUSDT from the faucet and authorise the pool to
+                        pull
+                      </td>
                     </tr>
                     <tr>
                       <td>2</td>
-                      <td>Commit an amount, encrypted in your browser before it is sent</td>
+                      <td>
+                        Commit an amount, encrypted in your browser before it is
+                        sent
+                      </td>
                     </tr>
                     <tr>
                       <td>3</td>
-                      <td>Release any part of it back, at any time, with no loss</td>
+                      <td>
+                        Release any part of it back, at any time, with no loss
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -403,9 +489,21 @@ export function RegisterScreen() {
     amount: toBaseUnits(releaseAmount),
   });
 
+  /*
+    Gas is checked once and shown once, above all three forms.
+
+    It is not per form: with no ether, mint, commit and release fail
+    identically, and repeating the same sentence three times would push the
+    forms off the fold to say one thing.
+  */
+  const gasGuard = guardGas(gasBalance?.value);
+
   const renderGuard = (guard: Guard | null) =>
     guard ? (
-      <p className={`${shell.cost} ${guard.blocking ? shell.fault : ""}`} role="alert">
+      <p
+        className={`${shell.cost} ${guard.blocking ? shell.fault : ""}`}
+        role="alert"
+      >
         {guard.message}
         {guard.action === "switch-network" ? (
           <button
@@ -416,6 +514,17 @@ export function RegisterScreen() {
           >
             {guard.actionLabel}
           </button>
+        ) : null}
+        {guard.action === "gas-faucet" ? (
+          <a
+            className={shell.inlineAction}
+            style={{ marginLeft: "var(--s-2)" }}
+            href={SEPOLIA_FAUCET}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            {guard.actionLabel}
+          </a>
         ) : null}
         {guard.action === "faucet" ? (
           <button
@@ -431,7 +540,18 @@ export function RegisterScreen() {
       </p>
     ) : null;
 
+  /*
+    Null because it has not been read, or null because the read failed?
 
+    Both render the same rows, and neither is "not set". This is the one word
+    those rows use so that a rate limited RPC never asserts an empty account.
+  */
+  const unread =
+    positionState === "ready"
+      ? null
+      : positionState === "failed"
+      ? "could not read"
+      : "reading";
 
   return (
     <AppShell>
@@ -447,16 +567,29 @@ export function RegisterScreen() {
                 data-active={tab === t}
                 onClick={() => setTab(t)}
               >
-                {t === "position" ? "Position" : `Activity${activity === null ? "" : ` (${activity.length})`}`}
+                {t === "position"
+                  ? "Position"
+                  : `Activity${
+                      activity === null ? "" : ` (${activity.length})`
+                    }`}
               </button>
             ))}
           </div>
 
-          <section className={shell.panel} style={{ display: tab === "position" ? undefined : "none" }}>
+          <section
+            className={shell.panel}
+            style={{ display: tab === "position" ? undefined : "none" }}
+          >
             <div className={shell.panelHead}>
               <span className={shell.panelLabel}>Position</span>
               <span className={shell.panelMeta}>
-                {position?.hasLeaf ? `leaf ${position.leaf}` : "no leaf yet"}
+                {position?.hasLeaf
+                  ? `leaf ${position.leaf}`
+                  : positionState === "ready"
+                  ? "no leaf yet"
+                  : positionState === "failed"
+                  ? "unavailable"
+                  : "reading"}
               </span>
             </div>
             <div className={shell.panelBody}>
@@ -472,6 +605,7 @@ export function RegisterScreen() {
                 <span className={shell.kvKey}>Stake</span>
                 <EncryptedValue
                   handle={position?.stakeHandle}
+                  missing={unread ?? "not set"}
                   clear={stakeClear}
                   busy={decrypting === "stake"}
                   disabled={decrypting !== null || !position?.hasLeaf}
@@ -483,6 +617,7 @@ export function RegisterScreen() {
                 <span className={shell.kvKey}>Wallet</span>
                 <EncryptedValue
                   handle={position?.walletHandle}
+                  missing={unread ?? "not set"}
                   clear={walletClear}
                   busy={decrypting === "wallet"}
                   disabled={decrypting !== null}
@@ -493,7 +628,11 @@ export function RegisterScreen() {
 
                 <span className={shell.kvKey}>Weight line</span>
                 <span className={shell.kvValue}>
-                  <span className="ciphertext">{truncate(position?.weightHandle)}</span>
+                  <span className="ciphertext">
+                    {position?.weightHandle
+                      ? truncate(position.weightHandle)
+                      : unread ?? "not set"}
+                  </span>
                   <span className={shell.kvAside}>
                     {position
                       ? position.hoursHeld === 0
@@ -505,7 +644,13 @@ export function RegisterScreen() {
 
                 <span className={shell.kvKey}>Leaf index</span>
                 <span className={shell.kvValue}>
-                  {position?.hasLeaf ? position.leaf : "assigned on first commit"}
+                  {position?.hasLeaf
+                    ? position.leaf
+                    : positionState === "ready"
+                    ? "assigned on first commit"
+                    : positionState === "failed"
+                    ? "could not read"
+                    : "reading"}
                 </span>
 
                 <span className={shell.kvKey}>Shard share</span>
@@ -517,8 +662,23 @@ export function RegisterScreen() {
                 </span>
 
                 <span className={shell.kvKey}>Pool operator</span>
-                <span className={shell.kvValue} data-tone={position?.isOperator ? undefined : "fault"}>
-                  {position?.isOperator ? "authorised" : "not authorised"}
+                <span
+                  className={shell.kvValue}
+                  data-tone={
+                    positionState !== "ready"
+                      ? undefined
+                      : position?.isOperator
+                      ? undefined
+                      : "fault"
+                  }
+                >
+                  {position?.isOperator
+                    ? "authorised"
+                    : positionState === "ready"
+                    ? "not authorised"
+                    : positionState === "failed"
+                    ? "could not read"
+                    : "reading"}
                 </span>
               </div>
 
@@ -531,23 +691,29 @@ export function RegisterScreen() {
               */}
               <p className={shell.note}>
                 Handles sharing a tail is not a bug. An FHEVM handle encodes its
-                type and chain in the trailing bytes, so every euint64 on Sepolia
-                ends the same way. The leading bytes are what differ.
+                type and chain in the trailing bytes, so every euint64 on
+                Sepolia ends the same way. The leading bytes are what differ.
               </p>
 
               <p className={shell.note}>
                 Decrypted in this session only. Nothing is sent anywhere.
               </p>
-              {progress.phase === "fetching-keys" || progress.phase === "loading-sdk" ? (
+              {progress.phase === "fetching-keys" ||
+              progress.phase === "loading-sdk" ? (
                 <p className={shell.progress}>{progress.message}</p>
               ) : null}
               {progress.phase === "error" ? (
-                <p className={`${shell.note} ${shell.fault}`}>{progress.message}</p>
+                <p className={`${shell.note} ${shell.fault}`}>
+                  {progress.message}
+                </p>
               ) : null}
             </div>
           </section>
 
-          <section className={shell.panel} style={{ display: tab === "activity" ? undefined : "none" }}>
+          <section
+            className={shell.panel}
+            style={{ display: tab === "activity" ? undefined : "none" }}
+          >
             <div className={shell.panelHead}>
               <span className={shell.panelLabel}>Your activity</span>
               <span className={shell.panelMeta}>
@@ -571,7 +737,9 @@ export function RegisterScreen() {
                   <tbody>
                     {activity.map((row) => (
                       <tr key={row.tx}>
-                        <td>{row.kind === "Committed" ? "commit" : "release"}</td>
+                        <td>
+                          {row.kind === "Committed" ? "commit" : "release"}
+                        </td>
                         <td>{row.leaf.toString()}</td>
                         <td>{row.block.toString()}</td>
                         <td>
@@ -590,7 +758,9 @@ export function RegisterScreen() {
                   </tbody>
                 </table>
               ) : (
-                <p className={shell.empty}>No commits or releases from this address yet.</p>
+                <p className={shell.empty}>
+                  No commits or releases from this address yet.
+                </p>
               )}
             </div>
           </section>
@@ -598,6 +768,15 @@ export function RegisterScreen() {
 
         {/* --------------------------------------------------------- forms */}
         <div className={shell.stack}>
+          {/*
+            One sentence, above everything it blocks.
+
+            Without it the first thing a judge with an empty wallet sees is
+            three separate failures, each reported as though a contract had
+            rejected the call.
+          */}
+          {renderGuard(gasGuard)}
+
           <section className={shell.panel}>
             <div className={shell.panelHead}>
               <span className={shell.panelLabel}>Faucet</span>
@@ -612,7 +791,11 @@ export function RegisterScreen() {
               >
                 {busy(faucetTx) ? faucetTx.detail : "Mint 5 cUSDT"}
               </button>
-              <p className={`${shell.cost} ${faucetTx.status === "failed" ? shell.fault : ""}`}>
+              <p
+                className={`${shell.cost} ${
+                  faucetTx.status === "failed" ? shell.fault : ""
+                }`}
+              >
                 {faucetTx.status === "idle"
                   ? "Mints the pool's test token and authorises the pool to pull."
                   : faucetTx.detail}
@@ -630,7 +813,9 @@ export function RegisterScreen() {
                 <input
                   className={shell.input}
                   value={commitAmount}
-                  onChange={(e) => setCommitAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                  onChange={(e) =>
+                    setCommitAmount(e.target.value.replace(/[^0-9.]/g, ""))
+                  }
                   inputMode="decimal"
                   aria-label="Amount to commit"
                 />
@@ -644,9 +829,15 @@ export function RegisterScreen() {
                 </button>
               </div>
               {renderGuard(commitGuard)}
-              <p className={`${shell.cost} ${commitTx.status === "failed" ? shell.fault : ""}`}>
+              <p
+                className={`${shell.cost} ${
+                  commitTx.status === "failed" ? shell.fault : ""
+                }`}
+              >
                 {commitTx.status === "idle" || commitTx.status === "mined"
-                  ? `commit() ${HCU.COMMIT_DEPTH.toLocaleString("en-US")} HCU, flat in shard size`
+                  ? `commit() ${HCU.COMMIT_DEPTH.toLocaleString(
+                      "en-US"
+                    )} HCU, flat in shard size`
                   : commitTx.detail}
               </p>
               {/*
@@ -658,8 +849,9 @@ export function RegisterScreen() {
                 It is the property working.
               */}
               <p className={shell.note}>
-                A new stake carries no weight until it has been in the pool a full hour. That is what
-                stops a deposit made moments before a draw from taking the prize.
+                A new stake carries no weight until it has been in the pool a
+                full hour. That is what stops a deposit made moments before a
+                draw from taking the prize.
               </p>
             </div>
           </section>
@@ -674,7 +866,9 @@ export function RegisterScreen() {
                 <input
                   className={shell.input}
                   value={releaseAmount}
-                  onChange={(e) => setReleaseAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                  onChange={(e) =>
+                    setReleaseAmount(e.target.value.replace(/[^0-9.]/g, ""))
+                  }
                   inputMode="decimal"
                   aria-label="Amount to release"
                 />
@@ -682,13 +876,19 @@ export function RegisterScreen() {
                   type="button"
                   className={shell.buttonGhost}
                   onClick={() => submit("release")}
-                  disabled={busy(releaseTx) || (releaseGuard?.blocking ?? false)}
+                  disabled={
+                    busy(releaseTx) || (releaseGuard?.blocking ?? false)
+                  }
                 >
                   {busy(releaseTx) ? releaseTx.detail : "Release"}
                 </button>
               </div>
               {renderGuard(releaseGuard)}
-              <p className={`${shell.cost} ${releaseTx.status === "failed" ? shell.fault : ""}`}>
+              <p
+                className={`${shell.cost} ${
+                  releaseTx.status === "failed" ? shell.fault : ""
+                }`}
+              >
                 {releaseTx.status === "idle" || releaseTx.status === "mined"
                   ? "An over-release is an encrypted no-op, never a revert."
                   : releaseTx.detail}

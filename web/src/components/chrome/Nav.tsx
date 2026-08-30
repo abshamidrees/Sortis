@@ -56,13 +56,17 @@ export function Nav({ surface }: { surface: "marketing" | "app" }) {
   const links = surface === "app" ? APP_TABS : MARKETING_LINKS;
 
   /** The Draw tab lives at /app, so it must not match every /app/* route. */
-  const isActive = (href: string) => (href === "/app" ? pathname === "/app" : pathname === href);
+  const isActive = (href: string) =>
+    href === "/app" ? pathname === "/app" : pathname === href;
 
   return (
     <>
       <nav className={styles.nav} data-scrolled={scrolled}>
         <div className={styles.inner}>
-          <Link className={styles.brand} href={surface === "app" ? "/app" : "/"}>
+          <Link
+            className={styles.brand}
+            href={surface === "app" ? "/app" : "/"}
+          >
             <SortisMark className={styles.mark} />
             <span className={styles.wordmark}>Sortis</span>
           </Link>
@@ -80,7 +84,9 @@ export function Nav({ surface }: { surface: "marketing" | "app" }) {
                 key={item.href}
                 className={styles.link}
                 href={item.href}
-                data-active={surface === "app" ? isActive(item.href) : undefined}
+                data-active={
+                  surface === "app" ? isActive(item.href) : undefined
+                }
               >
                 {item.label}
               </Link>
@@ -177,7 +183,8 @@ function WalletButton() {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     const onClick = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement)?.closest?.(`[data-wallet-menu]`)) setOpen(false);
+      if (!(e.target as HTMLElement)?.closest?.(`[data-wallet-menu]`))
+        setOpen(false);
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onClick);
@@ -210,7 +217,9 @@ function WalletButton() {
     );
   }
 
-  const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "connecting";
+  const short = address
+    ? `${address.slice(0, 6)}…${address.slice(-4)}`
+    : "connecting";
 
   return (
     <div className={styles.walletWrap} data-wallet-menu>
@@ -221,7 +230,11 @@ function WalletButton() {
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <span className={styles.walletDot} data-linking={linking || undefined} aria-hidden="true" />
+        <span
+          className={styles.walletDot}
+          data-linking={linking || undefined}
+          aria-hidden="true"
+        />
         {short}
       </button>
 
@@ -245,7 +258,9 @@ function WalletButton() {
           <div className={styles.walletStat}>
             <span className={styles.walletStatKey}>Gas</span>
             <span className={styles.walletStatValue}>
-              {eth ? `${Number(eth.formatted).toFixed(4)} ${eth.symbol}` : "reading"}
+              {eth
+                ? `${Number(eth.formatted).toFixed(4)} ${eth.symbol}`
+                : "reading"}
             </span>
           </div>
 
