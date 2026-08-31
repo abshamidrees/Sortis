@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   useAccount,
-  useChainId,
   useSwitchChain,
   useWriteContract,
   usePublicClient,
@@ -12,6 +11,7 @@ import {
 import { DRAW_ABI } from "@/lib/abi";
 import { DRAW, publicClient } from "@/lib/chain";
 import { readTxError, SEPOLIA_ID } from "@/lib/guards";
+import { useSepolia } from "@/lib/useSepolia";
 import shell from "@/components/chrome/AppShell.module.css";
 
 /**
@@ -34,7 +34,8 @@ import shell from "@/components/chrome/AppShell.module.css";
  */
 export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
   const { isConnected } = useAccount();
-  const chainId = useChainId();
+  const { walletChainId, wrongNetwork, ensureSepolia } = useSepolia();
+  const chainId = walletChainId ?? SEPOLIA_ID;
   const { switchChain } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const wagmiClient = usePublicClient();
@@ -84,9 +85,19 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
   }, [remaining]);
 
   const open = useCallback(async () => {
+    setState({ status: "pending", detail: "Checking network" });
+    if (!(await ensureSepolia())) {
+      setState({
+        status: "failed",
+        detail:
+          "This wallet is not on Sepolia. Sortis is deployed there only, so nothing was sent.",
+      });
+      return;
+    }
     setState({ status: "pending", detail: "Waiting for signature" });
     try {
       const hash = await writeContractAsync({
+        chainId: SEPOLIA_ID,
         address: DRAW,
         abi: DRAW_ABI,
         functionName: "openDraw",
@@ -103,7 +114,6 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
     }
   }, [writeContractAsync, wagmiClient, refresh, onOpened]);
 
-  const wrongNetwork = isConnected && chainId !== SEPOLIA_ID;
   const openable = remaining !== null && remaining === 0;
 
   const countdown =

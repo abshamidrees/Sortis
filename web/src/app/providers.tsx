@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useAccount } from "wagmi";
-import { PrivyProvider, useWallets } from "@privy-io/react-auth";
+import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
 import {
   WagmiProvider as PrivyWagmiProvider,
   useSetActiveWallet,
@@ -49,11 +49,21 @@ import { PRIVY_APP_ID, privyConfig, wagmiConfig } from "@/lib/wagmi";
  * branch anyway, where plain wagmi is the only connector.
  */
 function WalletBridge({ children }: { children: ReactNode }) {
+  const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const { setActiveWallet } = useSetActiveWallet();
   const { address, isConnected } = useAccount();
 
-  const wallet = wallets[0];
+  /*
+    Only bridge a session Privy has already restored.
+
+    Ungated, this ran before Privy finished loading, and attaching a wallet
+    that was not connected yet asked the user to connect again on every
+    refresh. `ready` is Privy saying it has finished deciding;
+    `authenticated` is Privy saying there is a session to hand over. Without
+    both, there is nothing to bridge and prompting is the wrong answer.
+  */
+  const wallet = ready && authenticated ? wallets[0] : undefined;
 
   /*
     Keyed on the ADDRESS, not on the wallet object.
@@ -68,13 +78,13 @@ function WalletBridge({ children }: { children: ReactNode }) {
     isConnected && address?.toLowerCase() === privyAddress?.toLowerCase();
 
   useEffect(() => {
-    if (!wallet || attached) return;
+    if (!ready || !authenticated || !wallet || attached) return;
     void setActiveWallet(wallet).catch(() => {
       // A wallet that will not attach leaves the screens reading "not
       // connected", which is the honest state rather than a false positive.
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [privyAddress, attached, setActiveWallet]);
+  }, [ready, authenticated, privyAddress, attached, setActiveWallet]);
 
   return <>{children}</>;
 }

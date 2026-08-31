@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   useAccount,
-  useChainId,
   useSwitchChain,
   useWriteContract,
   usePublicClient,
@@ -12,6 +11,7 @@ import {
 import { DRAW_ABI, POOL_ABI } from "@/lib/abi";
 import { DRAW, POOL, publicClient, type DrawRow } from "@/lib/chain";
 import { readTxError, SEPOLIA_ID } from "@/lib/guards";
+import { useSepolia } from "@/lib/useSepolia";
 import shell from "@/components/chrome/AppShell.module.css";
 
 /**
@@ -31,7 +31,8 @@ import shell from "@/components/chrome/AppShell.module.css";
  */
 export function ClaimPrize({ draw }: { draw: DrawRow | null }) {
   const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  const { walletChainId, wrongNetwork, ensureSepolia } = useSepolia();
+  const chainId = walletChainId ?? SEPOLIA_ID;
   const { switchChain } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const wagmiClient = usePublicClient();
@@ -78,9 +79,19 @@ export function ClaimPrize({ draw }: { draw: DrawRow | null }) {
 
   const claim = useCallback(async () => {
     if (drawId === null) return;
+    setState({ status: "pending", detail: "Checking network" });
+    if (!(await ensureSepolia())) {
+      setState({
+        status: "failed",
+        detail:
+          "This wallet is not on Sepolia. Sortis is deployed there only, so nothing was sent.",
+      });
+      return;
+    }
     setState({ status: "pending", detail: "Waiting for signature" });
     try {
       const hash = await writeContractAsync({
+        chainId: SEPOLIA_ID,
         address: DRAW,
         abi: DRAW_ABI,
         functionName: "claimPrize",
@@ -95,7 +106,6 @@ export function ClaimPrize({ draw }: { draw: DrawRow | null }) {
     }
   }, [drawId, writeContractAsync, wagmiClient, refresh]);
 
-  const wrongNetwork = isConnected && chainId !== SEPOLIA_ID;
   const settled = Boolean(draw?.lotDrawn);
   const canClaim =
     settled && hasLeaf === true && claimed === false && !wrongNetwork;

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   useAccount,
   useBalance,
-  useChainId,
   useSignTypedData,
   useSwitchChain,
   useWriteContract,
@@ -25,6 +24,7 @@ import {
   type Position,
 } from "@/lib/chain";
 import { useFhevm } from "@/lib/fhevm";
+import { useSepolia } from "@/lib/useSepolia";
 import {
   guardCommit,
   guardGas,
@@ -175,7 +175,9 @@ export function RegisterScreen() {
     address,
     query: { enabled: Boolean(address) },
   });
-  const chainId = useChainId();
+  // The WALLET's chain, not the config's. See lib/useSepolia.ts.
+  const { walletChainId, wrongNetwork, ensureSepolia } = useSepolia();
+  const chainId = walletChainId ?? SEPOLIA_ID;
   const { switchChain } = useSwitchChain();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
@@ -287,7 +289,16 @@ export function RegisterScreen() {
     if (!address) return;
     setFaucetTx({ status: "pending", detail: "Minting 5 cUSDT" });
     try {
+      if (!(await ensureSepolia())) {
+        setFaucetTx({
+          status: "failed",
+          detail:
+            "This wallet is not on Sepolia. Sortis is deployed there only, so nothing was sent.",
+        });
+        return;
+      }
       const hash = await writeContractAsync({
+        chainId: SEPOLIA_ID,
         address: CUSDT,
         abi: CUSDT_ABI,
         functionName: "mint",
@@ -300,6 +311,7 @@ export function RegisterScreen() {
       // hits a failed commit for a reason the UI never mentioned.
       if (!position?.isOperator) {
         const op = await writeContractAsync({
+          chainId: SEPOLIA_ID,
           address: CUSDT,
           abi: CUSDT_ABI,
           functionName: "setOperator",
@@ -326,6 +338,15 @@ export function RegisterScreen() {
       const setTx = kind === "commit" ? setCommitTx : setReleaseTx;
       const raw = kind === "commit" ? commitAmount : releaseAmount;
 
+      setTx({ status: "pending", detail: "Checking network" });
+      if (!(await ensureSepolia())) {
+        setTx({
+          status: "failed",
+          detail:
+            "This wallet is not on Sepolia. Sortis is deployed there only, so nothing was sent.",
+        });
+        return;
+      }
       setTx({ status: "pending", detail: "Encrypting the amount" });
       try {
         const amount = toBaseUnits(raw);
@@ -337,6 +358,7 @@ export function RegisterScreen() {
 
         setTx({ status: "pending", detail: "Waiting for signature" });
         const hash = await writeContractAsync({
+          chainId: SEPOLIA_ID,
           address: POOL,
           abi: POOL_ABI,
           functionName: kind,
@@ -788,7 +810,7 @@ export function RegisterScreen() {
                 type="button"
                 className={shell.button}
                 onClick={runFaucet}
-                disabled={busy(faucetTx)}
+                disabled={busy(faucetTx) || wrongNetwork}
               >
                 {busy(faucetTx) ? faucetTx.detail : "Mint 5 cUSDT"}
               </button>
