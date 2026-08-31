@@ -646,25 +646,70 @@ export async function readSlotHandles(
   */
   const entries = [...owners.entries()].filter(([leaf]) => leaf < capacity);
 
-  const results = await publicClient.multicall({
-    allowFailure: true,
-    // One aggregate call, never split. See the batchSize note on the client.
-    batchSize: 0,
-    contracts: entries.flatMap(([, owner]) => [
-      {
-        address: POOL,
-        abi: POOL_ABI,
-        functionName: "stakeOf",
-        args: [owner],
-      } as const,
-      {
-        address: POOL,
-        abi: POOL_ABI,
-        functionName: "lastChangeOf",
-        args: [owner],
-      } as const,
-    ]),
-  });
+  /*
+    CHUNKED, AND EACH CHUNK RETRIED.
+
+    A full register in one aggregate call is 48 reads and about 10.8KB of
+    calldata, and that request was being refused in the browser while the
+    identical call succeeded from a node script against the same endpoint.
+    Rather than keep bisecting a provider's undocumented limits, this asks for
+    less at a time and asks again when a chunk is dropped.
+
+    Eight owners per chunk is 16 reads and roughly 3.6KB, which has proved
+    reliable, and three chunks issued in parallel are still far fewer requests
+    than the 48 individual reads this replaced. resilientRead retries each one
+    independently, so a single dropped packet costs one chunk's slots for one
+    attempt rather than emptying the register.
+  */
+  const OWNERS_PER_CHUNK = 8;
+  const chunks: (typeof entries)[] = [];
+  for (let i = 0; i < entries.length; i += OWNERS_PER_CHUNK) {
+    chunks.push(entries.slice(i, i + OWNERS_PER_CHUNK));
+  }
+
+  const chunkResults = await Promise.all(
+    chunks.map((chunk) =>
+      resilientRead(() =>
+        publicClient.multicall({
+          allowFailure: true,
+          // Never split further: the chunk size above is the request size.
+          batchSize: 0,
+          contracts: chunk.flatMap(([, owner]) => [
+            {
+              address: POOL,
+              abi: POOL_ABI,
+              functionName: "stakeOf",
+              args: [owner],
+            } as const,
+            {
+              address: POOL,
+              abi: POOL_ABI,
+              functionName: "lastChangeOf",
+              args: [owner],
+            } as const,
+          ]),
+        })
+      ).catch(() =>
+        // A chunk that exhausted its retries yields failures for its own
+        // slots, in the shape the mapping below expects, and leaves the rest
+        // of the register alone.
+        chunk.flatMap(() => [
+          {
+            status: "failure" as const,
+            error: new Error("chunk unavailable"),
+            result: undefined,
+          },
+          {
+            status: "failure" as const,
+            error: new Error("chunk unavailable"),
+            result: undefined,
+          },
+        ])
+      )
+    )
+  );
+
+  const results = chunkResults.flat();
 
   let failed = 0;
   entries.forEach(([leaf], i) => {
