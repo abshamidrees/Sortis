@@ -276,7 +276,7 @@ contract SortisPool is SortisRegister, SortisTwab {
      *
      * @dev WORST-CASE HCU DEPTH: see `_walk`. About 774,500 per level of
      *      `activeHeight()`, and DEPTH is the binding budget: measured, a
-     *      shard resolves up to 64 stakes and reverts at 128. A chain that is
+     *      shard resolves up to 32 stakes and reverts at 64. A chain that is
      *      too long cannot be checkpointed, so that ceiling is hard.
      *
      *      `t` is passed in rather than read from the clock so the walk

@@ -23,7 +23,7 @@ import styles from "./DrawColumn.module.css";
  */
 
 export type DrawColumnProps = {
-  /** Tree height. A shard is 6, which is 64 stakes and six beats. */
+  /** Tree height. A shard is 5, which is 32 stakes and five beats. */
   levels?: number;
   /** Ciphertext handles, one per slot. Generated if omitted. */
   handles?: string[];
@@ -83,7 +83,10 @@ function mulberry32(seed: number) {
 /** A plausible truncated ciphertext handle: 0x7f2a…c091. */
 function makeHandle(rand: () => number, short: boolean): string {
   const hex = (n: number) =>
-    Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(rand() * 16)]).join("");
+    Array.from(
+      { length: n },
+      () => "0123456789abcdef"[Math.floor(rand() * 16)]
+    ).join("");
   return short ? `0x${hex(3)}…${hex(3)}` : `0x${hex(4)}…${hex(4)}`;
 }
 
@@ -120,8 +123,11 @@ export function DrawColumn({
   const compact = pitch < 24;
 
   const seed = useMemo(
-    () => levels * 7919 + (resolvedIndex ?? 3) * 104729 + (handles?.length ?? 0) * 31,
-    [levels, resolvedIndex, handles?.length],
+    () =>
+      levels * 7919 +
+      (resolvedIndex ?? 3) * 104729 +
+      (handles?.length ?? 0) * 31,
+    [levels, resolvedIndex, handles?.length]
   );
 
   const generatedHandles = useMemo(() => {
@@ -137,10 +143,13 @@ export function DrawColumn({
    * stays: a marketing loop illustrating the mechanism is not the same claim
    * as a route titled "live" showing a simulation.
    */
-  const slotHandles = handles?.length ? handles.slice(0, slotCount) : generatedHandles;
+  const slotHandles = handles?.length
+    ? handles.slice(0, slotCount)
+    : generatedHandles;
 
   const winner = useMemo(() => {
-    if (resolvedIndex !== undefined) return Math.min(Math.max(resolvedIndex, 0), slotCount - 1);
+    if (resolvedIndex !== undefined)
+      return Math.min(Math.max(resolvedIndex, 0), slotCount - 1);
     return Math.floor(mulberry32(seed + 1)() * slotCount);
   }, [resolvedIndex, seed, slotCount]);
 
@@ -154,7 +163,8 @@ export function DrawColumn({
     setMounted(true);
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
     setReducedMotion(query.matches);
-    const listener = (event: MediaQueryListEvent) => setReducedMotion(event.matches);
+    const listener = (event: MediaQueryListEvent) =>
+      setReducedMotion(event.matches);
     query.addEventListener("change", listener);
     return () => query.removeEventListener("change", listener);
   }, []);
@@ -218,7 +228,8 @@ export function DrawColumn({
   }, [beat, slotCount, winner]);
 
   /** Candidates left in the shard. Halves once per beat, 64 down to 1. */
-  const candidatesRemaining = beat < 0 ? slotCount : Math.max(1, surviving.hi - surviving.lo);
+  const candidatesRemaining =
+    beat < 0 ? slotCount : Math.max(1, surviving.hi - surviving.lo);
 
   // While the walk runs the token tracks the level it is on. When it resolves
   // it settles onto the drawn slot, because a token that finished at the
@@ -230,8 +241,8 @@ export function DrawColumn({
   const tokenY = resolved
     ? winner % rows
     : beat < 0
-      ? 0
-      : Math.min(Math.round(((beat + 1) / levels) * (rows - 1)), rows - 1);
+    ? 0
+    : Math.min(Math.round(((beat + 1) / levels) * (rows - 1)), rows - 1);
 
   return (
     <div className={className}>
@@ -248,7 +259,9 @@ export function DrawColumn({
         aria-label={
           resolved
             ? `Draw resolved. ${levels} levels descended, one slot of ${slotCount} drawn.`
-            : `Draw in progress. Level ${Math.max(beat, 0) + 1} of ${levels}, ${candidatesRemaining} candidates left.`
+            : `Draw in progress. Level ${
+                Math.max(beat, 0) + 1
+              } of ${levels}, ${candidatesRemaining} candidates left.`
         }
       >
         <div className={styles.channel} aria-hidden="true">
@@ -258,12 +271,17 @@ export function DrawColumn({
               key={i}
               className={styles.tick}
               style={{
-                ["--tick-i" as string]: Math.round((i / Math.max(levels - 1, 1)) * (rows - 1)),
+                ["--tick-i" as string]: Math.round(
+                  (i / Math.max(levels - 1, 1)) * (rows - 1)
+                ),
               }}
               data-passed={beat >= 0 && i <= beat}
             />
           ))}
-          <div className={styles.token} data-resolved={resolved && revealWinner} />
+          <div
+            className={styles.token}
+            data-resolved={resolved && revealWinner}
+          />
         </div>
 
         <div className={styles.slots} data-columns={columns}>
@@ -288,10 +306,10 @@ export function DrawColumn({
                 ? "drawn"
                 : "sealed"
               : resolved && !revealWinner
-                ? "sealed"
-                : i >= surviving.lo && i < surviving.hi
-                  ? "sealed"
-                  : "eliminated";
+              ? "sealed"
+              : i >= surviving.lo && i < surviving.hi
+              ? "sealed"
+              : "eliminated";
             return (
               <div
                 key={i}
@@ -308,7 +326,9 @@ export function DrawColumn({
                     identity, and this is the number the weight line is built
                     from: a slot showing only a handle hides what decides the
                     draw. */}
-                {meta?.[i] ? <span className={styles.slotMeta}>{meta[i]}</span> : null}
+                {meta?.[i] ? (
+                  <span className={styles.slotMeta}>{meta[i]}</span>
+                ) : null}
                 {isDrawn && revealWinner && revealed ? (
                   <span className={styles.slotRevealed}>{revealed}</span>
                 ) : null}
@@ -319,7 +339,9 @@ export function DrawColumn({
 
         <div className={styles.readout}>
           <span className={styles.readoutLabel}>
-            {resolved ? "Resolved" : `Level ${Math.max(beat, 0) + (beat < 0 ? 0 : 1)} of ${levels}`}
+            {resolved
+              ? "Resolved"
+              : `Level ${Math.max(beat, 0) + (beat < 0 ? 0 : 1)} of ${levels}`}
           </span>
           <span className={styles.readoutValue} data-resolved={resolved}>
             {resolved && !revealWinner

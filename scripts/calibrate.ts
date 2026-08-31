@@ -24,10 +24,10 @@ const { ethers, fhevm } = hre;
  * no weight yet. This seeds enough of them to reach height 3 and then runs a
  * draw, which gives a real coprocessor number to compare against the mock's.
  *
- * WHY THIS IS THE TEST THAT MATTERS. The shipped shard is height 6 at 92.94%
+ * WHY THIS IS THE TEST THAT MATTERS. The shipped shard is height 5 at 89.52%
  * of the depth budget, measured against the FHEVM mock. If the real
  * coprocessor's accounting agrees with the mock at height 3, it will agree at
- * height 6. If it does not, the shard has to shrink, and it is much better to
+ * height 5. If it does not, the shard has to shrink, and it is much better to
  * learn that from an eight-leaf probe than from a draw that reverts.
  */
 
@@ -147,8 +147,8 @@ async function main() {
     console.log(`  difference ${delta.toFixed(2)}%`);
     console.log(
       delta > 7
-        ? `  MARGIN AT RISK: height 6 sits at 92.94% of budget and this gap would break it.`
-        : `  the mock's accounting holds, so 92.94% at height 6 is trustworthy.`,
+        ? `  MARGIN AT RISK: height 5 sits at 89.52% of budget and this gap would break it.`
+        : `  the mock's accounting holds, so 89.52% at height 5 is trustworthy.`,
     );
   } else {
     console.log(`  the descent executed and did not revert, which is the calibration.`);

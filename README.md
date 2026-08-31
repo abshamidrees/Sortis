@@ -119,6 +119,21 @@ been accruing. Not its size, not its weight, not whether it won. Hiding the
 existence of a position as well would mean hiding the storage writes, which is
 a different protocol.
 
+### The wrap queue is deployed and unused
+
+Money arrives as public USDT, and wrapping it in the same transaction as the
+deposit would make the amount readable one call before it became private.
+`SortisWrapQueue` exists to batch that: an epoch closes, the whole queue is
+wrapped and credited together, and a public sender maps to any stake settled in
+that window rather than to one.
+
+**It has never run.** `settleEpoch` has not executed once on Sepolia, the
+contract has no logs at all, and the app commits straight to the pool. That is
+the legible path for anyone trying this and the less private one: your wrap and
+your stake are one transaction apart and the amount is readable in between.
+Batching would raise the cost of linkage rather than eliminate it, and a
+depositor alone in an epoch gets no anonymity set either way.
+
 ## Error handling
 
 The rules name four states by hand: missing approvals, insufficient balance,
@@ -190,9 +205,18 @@ FHEVM enforces two limits per transaction. Exceeding either reverts.
 | global complexity | 20,000,000 HCU | work that can run in parallel |
 | sequential depth | 5,000,000 HCU | the longest dependent chain |
 
-[`test/HCU.t.ts`](test/HCU.t.ts) measures everything below and is a submission
-asset, not internal hygiene. It does not assume where the ceiling is, it sweeps
-until the transaction reverts.
+Two test files measure the two tables below, and they are not interchangeable.
+
+| file | what it sweeps | what it concludes |
+| --- | --- | --- |
+| [`test/HCU.t.ts`](test/HCU.t.ts) | `_update`, and `_walk` on its own | the walk alone fits 64 stakes |
+| [`test/Calibration.t.ts`](test/Calibration.t.ts) | `drawLot`, the whole settling transaction | a draw settles 32, and this sets the shard |
+
+A walk is not a draw. `drawLot` reduces the lot modulo the published total
+before it descends, and `FHE.rem` is a 1,153,000 chain the whole walk then
+hangs off, so the two sweeps reach different ceilings and only one of them
+sets capacity. Both are submission assets rather than internal hygiene, and
+neither assumes where the ceiling is: both sweep until the transaction reverts.
 
 ```bash
 npm test
@@ -213,7 +237,7 @@ other and bill against the global budget instead.
 | 2^12 | 713,000 | 14.26% | 4,818,000 | 24.09% |
 | 2^16 | 713,000 | 14.26% | 6,114,000 | 30.57% |
 
-Measured by `test/HCU.t.ts` at commit `c234b6a`.
+Measured by [`test/HCU.t.ts`](test/HCU.t.ts) at commit `3f79c22`.
 
 ### The draw: where the ceiling is, and why
 
@@ -229,6 +253,10 @@ transaction that actually has to land says otherwise.
 | 16 | 3,748,000 | 74.96% | fits |
 | 32 | 4,476,000 | 89.52% | fits, and this is the shard |
 | 64 | reverts | | depth budget |
+
+Measured by [`test/Calibration.t.ts`](test/Calibration.t.ts) at commit
+`3f79c22`, sweeping `drawLot` rather than the walk. This is the table the site
+quotes, and it is the one that sets capacity.
 
 A shard was briefly deployed at 64 on the strength of the walk figure and could
 not have settled its own draw. The number that sets capacity has to be the cost
@@ -250,7 +278,9 @@ weight of 124,000,000, opened at block 11597931, and `drawLot` used 2,566,618
 gas. The record is [`deployments/sepolia-livedraw.json`](deployments/sepolia-livedraw.json),
 written by [`scripts/draw.ts`](scripts/draw.ts), which refuses to open a draw
 at all unless `activeHeight()` reports 5 and at least 20 leaves carry weight.
-An earlier comparison at height 2 agreed exactly too, at 2,199,000 both ways,
+Draw 2 settled later at the same height and reported the same 4,476,000, so the
+agreement has now held twice at the deployed size. An earlier comparison at
+height 2 agreed exactly too, at 2,199,000 both ways,
 and [`test/Calibration.t.ts`](test/Calibration.t.ts) pins that so it cannot
 drift silently (commit `fae6fbf`).
 
@@ -309,7 +339,7 @@ the pool for no time, not because a keeper missed it.
 | [`SortisTwab.sol`](contracts/SortisTwab.sol) | A stake's own copy of its weight line. Scalar `FHE.mul` for the time term. |
 | [`SortisPool.sol`](contracts/SortisPool.sol) | `commit` and `release`. Over-withdrawal is an encrypted no-op, never a revert. |
 | [`SortisDraw.sol`](contracts/SortisDraw.sol) | `openDraw` then `drawLot`, two transactions. Native randomness, winner never revealed. |
-| [`SortisWrapQueue.sol`](contracts/SortisWrapQueue.sol) | Epoch-batched wrapping of public USDT into confidential stakes. |
+| [`SortisWrapQueue.sol`](contracts/SortisWrapQueue.sol) | Epoch-batched wrapping of public USDT into confidential stakes. Deployed, and **not yet wired to the frontend**: see below. |
 
 Every function states its worst-case HCU depth in a comment above it.
 

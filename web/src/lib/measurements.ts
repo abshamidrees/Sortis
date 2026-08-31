@@ -9,11 +9,38 @@
 
 export const REPO_URL = "https://github.com/abshamidrees/Sortis";
 
-/** The commit whose `npm test` run produced the figures below. */
-export const MEASUREMENT_COMMIT = "c234b6a";
+/**
+ * The commit whose `npm test` run produced the figures below.
+ *
+ * NOT c234b6a, which this cited until the launch audit caught it. That commit
+ * is titled "Weight is a line, and the shard ceiling is 64", and it predates
+ * the discovery that a walk measured on its own is not a draw. Citing it sent
+ * a reader to a message contradicting the page that cited it.
+ *
+ * 3f79c22 is where the ceiling became 32 and where test/Calibration.t.ts, which
+ * actually produces the drawLot table, was written.
+ */
+export const MEASUREMENT_COMMIT = "3f79c22";
+
+/**
+ * Which test produces which table, because they are not the same test and they
+ * do not reach the same conclusion.
+ *
+ *   Calibration.t.ts  sweeps drawLot, the whole transaction. Ceiling 32.
+ *   HCU.t.ts          sweeps _walk alone, which cannot settle a draw. Says 64.
+ *
+ * The site quotes the first. Anyone running `npm test` sees both, so the page
+ * has to say which one it is quoting.
+ */
+export const DRAW_TEST = "test/Calibration.t.ts";
+export const WALK_TEST = "test/HCU.t.ts";
 
 /** The Sepolia draw that confirmed the mock's accounting. Height 2. */
-export const SEPOLIA_CHECK = { height: 2, depth: 2_199_000, mockDepth: 2_199_000 } as const;
+export const SEPOLIA_CHECK = {
+  height: 2,
+  depth: 2_199_000,
+  mockDepth: 2_199_000,
+} as const;
 
 /**
  * The live draw at the size actually deployed, which is the one that counts.

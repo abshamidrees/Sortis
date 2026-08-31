@@ -452,7 +452,16 @@ describe("HCU budget", function () {
       const fitting = probes.filter((p) => p.binding === null);
       const ceiling = fitting[fitting.length - 1];
       console.log(
-        `  a single-transaction winner-hiding draw resolves up to ${n(ceiling.stakes)} stakes.`,
+        `  the WALK ALONE resolves up to ${n(ceiling.stakes)} stakes.`,
+      );
+      console.log(
+        `  THAT IS NOT THE SHARD SIZE. A draw is drawLot, which reduces the lot modulo`,
+      );
+      console.log(
+        `  the published total first, and FHE.rem is a 1,153,000 chain the whole walk`,
+      );
+      console.log(
+        `  then hangs off. test/Calibration.t.ts sweeps that transaction and finds 32.`,
       );
       const perLevel =
         (ceiling.depth! - fitting[0].depth!) / (ceiling.height - fitting[0].height);
@@ -489,13 +498,25 @@ describe("HCU budget", function () {
       }
     });
 
-    it("the ceiling is 64 stakes on the current design", function () {
+    it("the walk alone fits 64 stakes, which is not the shard size", function () {
       const fitting = probes.filter((p) => p.binding === null);
       const ceiling = fitting[fitting.length - 1];
 
-      // Pinned so that a change to the walk which moves this number has to
-      // move it here too, and cannot quietly change what the product claims.
-      expect(ceiling.stakes, "measured shard ceiling").to.equal(64);
+      /*
+        This measures _walk on its own, and a walk is not a draw.
+
+        The name used to say "the ceiling is 64 stakes on the current design",
+        which read as the shard size and is not. drawLot reduces the lot modulo
+        the published total before it descends, and that reduction is a
+        1,153,000 chain the entire walk then hangs off. Sweeping the whole
+        transaction, which is what has to land, gives 32.
+        test/Calibration.t.ts does that sweep and is what the site quotes.
+
+        Both numbers are correct and they answer different questions. Only one
+        of them sets capacity. Pinned so a change to the walk has to move it
+        here too, and cannot quietly change what the product claims.
+      */
+      expect(ceiling.stakes, "measured WALK ceiling, not the shard size").to.equal(64);
       expect(ceiling.depth!).to.be.lessThan(SEQUENTIAL_DEPTH_LIMIT);
       expect(ceiling.global!).to.be.lessThan(GLOBAL_HCU_LIMIT);
     });
