@@ -75,7 +75,7 @@ import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
  *      and cannot be deployed.
  *
  *      ---------------------------------------------------------------------
- *      THE HCU BUDGET (see docs/BRIEF.md section 1)
+ *      THE HCU BUDGET (see the README, "The budgets")
  *      ---------------------------------------------------------------------
  *          global complexity  20,000,000 HCU   work that may run in parallel
  *          sequential depth    5,000,000 HCU   longest dependent chain
@@ -465,7 +465,7 @@ contract SortisRegister is ZamaEthereumConfig {
      *      ---------------------------------------------------------------------
      *      THE GAP IN THE SPEC, AND WHAT IT COSTS
      *      ---------------------------------------------------------------------
-     *      docs/BRIEF.md section 4 describes the walk as three encrypted
+     *      The design describes the walk as three encrypted
      *      operations per level: one `FHE.lt` against the left child's sum,
      *      one `FHE.select` to pick the branch, one `FHE.select` to subtract.
      *      Those three are here. What the spec does not say is where the left

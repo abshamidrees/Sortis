@@ -4,8 +4,9 @@ Confidential prize-linked savings. You commit, you cannot lose your principal,
 the pooled yield is drawn as a prize on a schedule, and nothing about your
 position is visible to anyone.
 
-Built for the Zama Developer Program, Mainnet Season 4. See
-[docs/BRIEF.md](docs/BRIEF.md) for the full design.
+Built for the Zama Developer Program, Mainnet Season 4. The design is
+documented at [/docs](https://sortis.vercel.app/docs): what it is, how the
+register works, what stays private, and what it does not do.
 
 **Live app: https://sortis.vercel.app**
 

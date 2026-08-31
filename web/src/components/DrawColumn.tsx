@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./DrawColumn.module.css";
 
 /**
- * The draw column. The signature element, per docs/BRIEF.md section 6.
+ * The draw column. The signature element of the interface.
  *
  * A kleroterion plate: a channel down the left edge, a column of slots on the
  * right. Each slot is a stake and shows its ciphertext handle in --seal, the

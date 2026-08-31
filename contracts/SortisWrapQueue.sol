@@ -54,7 +54,7 @@ import {MockConfidentialUSDT} from "./mocks/MockConfidentialUSDT.sol";
  *
  *      `settleEpoch` therefore processes a bounded batch and advances a cursor,
  *      and is called repeatedly until the epoch drains. This is exactly the
- *      checkpointed-transaction escape hatch that docs/BRIEF.md section 1 point
+ *      checkpointed-transaction escape hatch that the README's budgets point
  *      4 sanctions, and section 4 explicitly points at the epoch settlement
  *      path as the place to use it. The draw does NOT get to use it; that one
  *      has to fit in a single transaction.

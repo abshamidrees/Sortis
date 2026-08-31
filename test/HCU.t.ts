@@ -11,7 +11,7 @@ const { ethers, fhevm } = hre;
 /**
  * test/HCU.t.ts -- the proof that the architecture is real.
  *
- * See docs/BRIEF.md section 1. FHEVM enforces two limits per transaction:
+ * See the README, "The budgets". FHEVM enforces two limits per transaction:
  *
  *     global complexity   20,000,000 HCU   work that may run in parallel
  *     sequential depth     5,000,000 HCU   the longest dependent chain

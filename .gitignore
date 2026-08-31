@@ -32,14 +32,11 @@ gas-report.txt
 # addresses, gas and block numbers, all of which are public the moment the
 # transaction lands.
 
-# Unrelated to Sortis: agent tooling and design-reference dumps for other
-# projects that happen to live in this working directory.
+# Unrelated to Sortis. Tooling and reference material for other work that
+# happens to share this working directory.
 .agents/
 skills-lock.json
-fd-design/
-osero-design/
-pro-design/
-t54-design/
+*-design/
 
 # Screenshot output from scripts/shoot.mjs
 shots/
@@ -49,3 +46,15 @@ shots/
 
 # Design reference captures. Third-party screenshots, not ours to redistribute.
 refs/
+
+# Build briefs and prompts. Working documents rather than product, and they
+# carry scheduling, unrelated project names, and design influence expressed as
+# percentages. None of it is a credential and none of it belongs in a public
+# repository a judge is reading.
+docs/BRIEF.md
+docs/SORTIS-BRIEF-V2.md
+docs/SORTIS-FINAL-PROMPT.md
+
+# The design reference harness. It names seven third-party products and exists
+# only to screenshot them.
+scripts/refs.mjs

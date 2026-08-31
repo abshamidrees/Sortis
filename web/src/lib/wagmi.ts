@@ -8,7 +8,7 @@ import type { PrivyClientConfig } from "@privy-io/react-auth";
 /**
  * Wallet configuration.
  *
- * Privy over wagmi and viem. Note that docs/BRIEF.md section 3 said RainbowKit
+ * Privy over wagmi and viem. The original design said RainbowKit
  * and explicitly not Privy, on the grounds that a signup step reads as consumer
  * friction to a protocol judge. That objection is answered by the config rather
  * than by the library: `loginMethods` is wallet and nothing else, so there is
