@@ -62,7 +62,17 @@ export const publicClient = createPublicClient({
     retryCount: 3,
     retryDelay: 400,
   }),
-  batch: { multicall: { wait: 24 } },
+  /*
+    batchSize matters as much as the batching.
+
+    viem's automatic multicall batcher defaults to 1024 bytes of calldata per
+    aggregate call, so a full register's 48 reads were being SPLIT back into
+    several eth_calls after being deliberately collapsed into one. Under rate
+    limiting some of those sub-batches were refused, which is how the register
+    ended up with a contiguous run of empty slots while the same multicall
+    returned 48 of 48 from a node script whose client had no batcher at all.
+  */
+  batch: { multicall: { wait: 24, batchSize: 8192 } },
 });
 
 /**
@@ -540,7 +550,19 @@ function readSlotCache(): (Slot | null)[] | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (Date.now() - parsed.at > SLOT_CACHE_MS) return null;
-    return parsed.slots as (Slot | null)[];
+
+    /*
+      Refuse a partial cache, including one written by an older build.
+
+      Caching used to accept any result with at least one slot in it, so a
+      browser that stored ten of twenty-four replays that until the entry
+      expires. Checking on read as well as on write means an existing poisoned
+      entry is discarded rather than waited out.
+    */
+    const slots = parsed.slots as (Slot | null)[];
+    const known = Object.keys(LEAF_SNAPSHOT.leaves).length;
+    if (slots.filter((slot) => slot !== null).length < known) return null;
+    return slots;
   } catch {
     return null;
   }
@@ -626,6 +648,8 @@ export async function readSlotHandles(
 
   const results = await publicClient.multicall({
     allowFailure: true,
+    // One aggregate call, never split. See the batchSize note on the client.
+    batchSize: 0,
     contracts: entries.flatMap(([, owner]) => [
       {
         address: POOL,
@@ -684,8 +708,21 @@ export async function readSlotHandles(
     reads as empty is a failure, not a result, and failures must not be
     remembered.
   */
-  const populated = slots.some((slot) => slot !== null);
-  if (populated) {
+  /*
+    CACHE ONLY A COMPLETE READ.
+
+    This used to cache whenever ANY slot came back, which meant a partial read
+    was stored and then replayed for the whole cache window. The register sat
+    at ten of twenty-four filled, identically, on every load, and the cache
+    made a transient failure look like a permanent one. An all-null result was
+    already refused; a partial one is the same bug with a smaller blast radius.
+
+    A read is complete when every owner the snapshot knows about resolved.
+  */
+  const populated = slots.filter((slot) => slot !== null).length;
+  const expected = [...owners.keys()].filter((leaf) => leaf < capacity).length;
+
+  if (expected > 0 && populated === expected) {
     try {
       sessionStorage.setItem(
         SLOT_CACHE_KEY,
@@ -694,9 +731,9 @@ export async function readSlotHandles(
     } catch {
       // A private window refuses storage. The reads still work, they just repeat.
     }
-  } else if (owners.size > 0) {
+  } else if (expected > 0) {
     console.warn(
-      `sortis: ${owners.size} leaves are assigned but none could be read. Not caching.`
+      `sortis: read ${populated} of ${expected} assigned leaves. Not caching a partial register.`
     );
   }
 
