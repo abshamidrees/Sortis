@@ -1,6 +1,14 @@
 "use client";
 
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
+
+/**
+ * Leaf to owner, frozen at build time by scripts/snapshot-leaves.ts.
+ *
+ * Immutable on chain, so this is a snapshot and not a cache. See the comment
+ * in readSlotHandles for why the log scan alone was not good enough.
+ */
+import LEAF_SNAPSHOT from "./leaves.json";
 import { sepolia } from "viem/chains";
 
 import { CUSDT_ABI, DRAW_ABI, POOL_ABI, YIELD_ABI } from "./abi";
@@ -554,16 +562,48 @@ export async function readSlotHandles(
 
   const slots: (Slot | null)[] = Array.from({ length: capacity }, () => null);
 
-  const head = await publicClient.getBlockNumber();
-  const logs = await getLogsChunked<{
-    args: { owner?: Address; leaf?: bigint };
-  }>({ address: POOL, event: EV_LEAF_ASSIGNED }, DEPLOY_BLOCK, head);
+  /*
+    THE SNAPSHOT FIRST, THE LOG SCAN ONLY FOR WHAT CAME AFTER IT.
 
+    Discovering owners by scanning LeafAssigned was the least reliable read in
+    the app. A free RPC tier serves that scan inconsistently, so the register
+    rendered 32 empty slots under a header reading "24 / 32" on roughly two
+    loads in three, on the app's main route.
+
+    A leaf is assigned once and never reassigned, so the mapping is immutable
+    and scripts/snapshot-leaves.ts freezes it into the bundle at build time.
+    That is not a cache that can go stale; it can only be incomplete, for
+    anyone who committed after it was taken. The scan still runs to find those,
+    and now a refused scan costs the newest depositors rather than everyone.
+
+    Balances are still read live below. They change on every commit and
+    release, and that read is one multicall, which is the half that works.
+  */
   const owners = new Map<number, Address>();
-  for (const log of logs) {
-    if (log.args.owner !== undefined && log.args.leaf !== undefined) {
-      owners.set(Number(log.args.leaf), log.args.owner);
+  for (const [leaf, owner] of Object.entries(LEAF_SNAPSHOT.leaves)) {
+    owners.set(Number(leaf), owner as Address);
+  }
+
+  try {
+    const head = await publicClient.getBlockNumber();
+    // Start from the snapshot, never before it. Both as bigints, because
+    // Math.max would coerce and lose precision on a block number.
+    const snapshotAt = BigInt(LEAF_SNAPSHOT.takenAtBlock);
+    const from = snapshotAt > DEPLOY_BLOCK ? snapshotAt : DEPLOY_BLOCK;
+    if (head > from) {
+      const logs = await getLogsChunked<{
+        args: { owner?: Address; leaf?: bigint };
+      }>({ address: POOL, event: EV_LEAF_ASSIGNED }, from, head);
+      for (const log of logs) {
+        if (log.args.owner !== undefined && log.args.leaf !== undefined) {
+          owners.set(Number(log.args.leaf), log.args.owner);
+        }
+      }
     }
+  } catch {
+    // Only the leaves added since the snapshot are missing, and the register
+    // still renders everything the snapshot knows about.
+    console.warn("sortis: could not scan for leaves added since the snapshot.");
   }
 
   // The chain's own clock, in the same units lastChange is recorded in.

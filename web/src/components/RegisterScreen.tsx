@@ -29,6 +29,7 @@ import {
   guardCommit,
   guardGas,
   guardRelease,
+  formatUnits,
   readTxError,
   toBaseUnits,
   SEPOLIA_FAUCET,
@@ -872,6 +873,30 @@ export function RegisterScreen() {
                   inputMode="decimal"
                   aria-label="Amount to release"
                 />
+                {/*
+                  Withdrawing in full, without doing arithmetic on a ciphertext.
+
+                  "You cannot lose your principal" is the product's central
+                  promise and taking all of it back was not offered: the field
+                  defaulted to a fixed amount and the balance is encrypted, so
+                  the only route to the exact figure was decrypting it and
+                  retyping it by hand.
+
+                  This fills the field from the decrypted stake, so it appears
+                  only once the stake has been decrypted in this session. There
+                  is no honest way to offer it before that, because the browser
+                  genuinely does not know the number.
+                */}
+                {stakeClear !== null && stakeClear > 0n ? (
+                  <button
+                    type="button"
+                    className={shell.inlineAction}
+                    onClick={() => setReleaseAmount(formatUnits(stakeClear))}
+                    disabled={busy(releaseTx)}
+                  >
+                    All
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={shell.buttonGhost}

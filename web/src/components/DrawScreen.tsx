@@ -6,6 +6,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/chrome/AppShell";
 import { DrawColumn } from "@/components/DrawColumn";
 import { TriggerDraw } from "@/components/TriggerDraw";
+import { ClaimPrize } from "@/components/ClaimPrize";
 import { ETHERSCAN, HCU } from "@/lib/measurements";
 import type { Slot } from "@/lib/chain";
 import {
@@ -221,6 +222,9 @@ export function DrawScreen() {
         {/* --------------------------------------------------- current draw */}
         <div className={shell.stack}>
           <TriggerDraw />
+
+          {/* Claims target the settled draw shown below, never the open one. */}
+          <ClaimPrize draw={current} />
 
           <section className={shell.panel}>
             <div className={shell.panelHead}>

@@ -11,6 +11,7 @@ import {
   publicClient,
   readDrawnEvent,
   truncate,
+  resilientRead,
 } from "@/lib/chain";
 import { DRAW_ABI } from "@/lib/abi";
 import shell from "@/components/chrome/AppShell.module.css";
@@ -244,8 +245,21 @@ function VerifyBody() {
     // rendered an input and nothing else, so a judge arriving here saw an
     // apparently empty page and no reason to think anything was happening.
     setBusy(true);
-    void publicClient
-      .readContract({ address: DRAW, abi: DRAW_ABI, functionName: "drawCount" })
+    /*
+      Retried, because this one read decides whether the route works at all.
+
+      Unwrapped, a single refused drawCount left the screen reading "Could not
+      reach Sepolia to find the latest draw", which is the state a judge met in
+      production. Everything the page then goes on to prove was reachable only
+      by guessing a draw id into the box.
+    */
+    void resilientRead(() =>
+      publicClient.readContract({
+        address: DRAW,
+        abi: DRAW_ABI,
+        functionName: "drawCount",
+      })
+    )
       .then(async (count) => {
         const total = count as bigint;
         if (!alive) return;
