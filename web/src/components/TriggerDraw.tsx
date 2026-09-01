@@ -9,7 +9,7 @@ import {
 } from "wagmi";
 
 import { DRAW_ABI } from "@/lib/abi";
-import { DRAW, publicClient } from "@/lib/chain";
+import { DRAW, publicClient, SHARD } from "@/lib/chain";
 import { readTxError, SEPOLIA_ID } from "@/lib/guards";
 import { useSepolia } from "@/lib/useSepolia";
 import shell from "@/components/chrome/AppShell.module.css";
@@ -41,7 +41,8 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
   const wagmiClient = usePublicClient();
 
   const [remaining, setRemaining] = useState<number | null>(null);
-  const [interval, setIntervalSeconds] = useState<number | null>(null);
+  // Immutable, from the bundle. Never read, never null, never "reading".
+  const interval = SHARD.minDrawInterval;
   const [state, setState] = useState<{
     status: "idle" | "pending" | "done" | "failed";
     detail?: string;
@@ -49,20 +50,21 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [left, every] = await Promise.all([
-        publicClient.readContract({
-          address: DRAW,
-          abi: DRAW_ABI,
-          functionName: "secondsUntilNextDraw",
-        }),
-        publicClient.readContract({
-          address: DRAW,
-          abi: DRAW_ABI,
-          functionName: "minDrawInterval",
-        }),
-      ]);
+      /*
+        Only the countdown is read. The interval is a constructor argument.
+
+        minDrawInterval cannot change without redeploying SortisDraw, which
+        would change the address this app is pointed at, so it comes from the
+        build-time snapshot. On a provider that rate limits by request count,
+        re-asking for an immutable number on a twenty second poll is budget
+        spent on an answer that is already known.
+      */
+      const left = await publicClient.readContract({
+        address: DRAW,
+        abi: DRAW_ABI,
+        functionName: "secondsUntilNextDraw",
+      });
       setRemaining(Number(left as bigint));
-      setIntervalSeconds(Number(every as bigint));
     } catch {
       // Leave the countdown unknown rather than claiming it is open.
     }
@@ -144,9 +146,7 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
 
           <span className={shell.kvKey}>Interval</span>
           <span className={shell.kvValue}>
-            {interval === null
-              ? "reading"
-              : `${Math.round(interval / 60)} minutes`}
+            {`${Math.round(interval / 60)} minutes`}
             <span className={shell.kvAside}>minimum between draws</span>
           </span>
         </div>

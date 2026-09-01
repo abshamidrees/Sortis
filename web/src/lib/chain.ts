@@ -3,12 +3,16 @@
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
 
 /**
- * Leaf to owner, frozen at build time by scripts/snapshot-leaves.ts.
+ * Everything about this shard that cannot change, frozen at build time by
+ * scripts/snapshot.ts: the immutable constructor arguments, the append-only
+ * leaf assignment, and every draw that has already settled.
  *
- * Immutable on chain, so this is a snapshot and not a cache. See the comment
- * in readSlotHandles for why the log scan alone was not good enough.
+ * This is not a cache. Nothing in it can go stale, only incomplete, and the
+ * live reads below fill in what came after it. It exists because the free RPC
+ * tier answers by request COUNT with 429, and the cheapest request is the one
+ * that is never sent.
  */
-import LEAF_SNAPSHOT from "./leaves.json";
+import LEAF_SNAPSHOT from "./snapshot.json";
 import { sepolia } from "viem/chains";
 
 import { CUSDT_ABI, DRAW_ABI, POOL_ABI, YIELD_ABI } from "./abi";
@@ -265,6 +269,33 @@ export type DrawRow = {
 };
 
 async function readDraw(id: bigint): Promise<DrawRow> {
+  /*
+    Settled draws come from the bundle. Only an open one needs the chain.
+
+    A draw that has been drawn is fixed for all time: root, block, prize, total
+    weight, walk height and resolved leaf never move again. Re-reading two
+    contract calls per settled draw on every page load spent request budget on
+    answers that could not have changed.
+  */
+  const frozen = SETTLED_DRAWS.get(Number(id));
+  if (frozen) {
+    return {
+      id,
+      rootHandle: frozen.rootHandle as `0x${string}`,
+      openedAtBlock: BigInt(frozen.openedAtBlock),
+      prize: BigInt(frozen.prize),
+      totalWeight: BigInt(frozen.totalWeight),
+      walkHeight: frozen.walkHeight,
+      lotDrawn: true,
+      refHour: BigInt(frozen.refHour),
+      resolvedLeaf: frozen.resolvedLeaf as `0x${string}`,
+      status: "drawn",
+      lotHandle: (frozen.lotHandle as `0x${string}` | null) ?? null,
+      drawnAtBlock:
+        frozen.drawnAtBlock === null ? null : BigInt(frozen.drawnAtBlock),
+    };
+  }
+
   const [info, resolved] = await Promise.all([
     publicClient.readContract({
       address: DRAW,
@@ -356,6 +387,23 @@ async function readDrawnEvents(): Promise<
 export async function readDrawnEvent(
   drawId: bigint
 ): Promise<{ lot: `0x${string}`; block: bigint } | null> {
+  /*
+    A settled draw's lot handle is final, so it is in the bundle.
+
+    This function was a full log scan across every window since deployment,
+    run on the draw route and again by Verify, to fetch a value that stopped
+    changing the moment the draw settled. On a provider that rate limits by
+    request count, that was one of the most expensive things the app did and
+    none of it was necessary.
+  */
+  const frozen = SETTLED_DRAWS.get(Number(drawId));
+  if (frozen?.lotHandle && frozen.drawnAtBlock !== null) {
+    return {
+      lot: frozen.lotHandle as `0x${string}`,
+      block: BigInt(frozen.drawnAtBlock),
+    };
+  }
+
   const head = await publicClient.getBlockNumber();
   const logs = await getLogsChunked<{
     args: { lotHandle?: `0x${string}` };
@@ -507,12 +555,25 @@ export async function readDrawHistory(count: bigint): Promise<DrawRow[]> {
     beneath a header showing a live draw id. One dropped packet should not
     produce two contradictory claims on the same screen.
   */
-  const [rows, drawn] = await resilientRead(() =>
-    Promise.all([Promise.all(ids.map(readDraw)), readDrawnEvents()])
+  /*
+    The bulk Drawn scan runs ONLY if a settled draw is missing its lot handle.
+
+    readDraw now returns settled draws from the bundle, lot handle included, so
+    for a shard whose draws are all in the snapshot this whole log scan is
+    skipped. It was the single most expensive read on the route: a windowed
+    getLogs across every block since deployment, on every load, to enrich rows
+    that already carried the value.
+  */
+  const rows = await resilientRead(() => Promise.all(ids.map(readDraw)));
+  const missing = rows.some((row) => row.lotDrawn && !row.lotHandle);
+  if (!missing) return rows;
+
+  const drawn = await readDrawnEvents().catch(
+    () => new Map<string, { lot: `0x${string}`; block: bigint }>()
   );
   return rows.map((row) => {
     const event = drawn.get(row.id.toString());
-    return event
+    return event && !row.lotHandle
       ? { ...row, lotHandle: event.lot, drawnAtBlock: event.block }
       : row;
   });
@@ -570,6 +631,15 @@ export type Slot = {
  * Everything the register needs in order to DRAW ITSELF is here. Which slots
  * are occupied, and how many. No promise, no retry, no failure mode.
  */
+/** Draws that have settled, and are therefore final. Zero network. */
+export const SETTLED_DRAWS: ReadonlyMap<
+  number,
+  (typeof LEAF_SNAPSHOT.settledDraws)[number]
+> = new Map(LEAF_SNAPSHOT.settledDraws.map((d) => [d.id, d]));
+
+/** Immutable constructor arguments. Zero network. */
+export const SHARD = LEAF_SNAPSHOT.shard;
+
 export const LEAF_OWNERS: ReadonlyMap<number, Address> = new Map(
   Object.entries(LEAF_SNAPSHOT.leaves).map(([leaf, owner]) => [
     Number(leaf),
