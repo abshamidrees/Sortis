@@ -218,8 +218,9 @@ export function TriggerDraw({
         <p className={shell.note}>
           A stake carries no weight until it has been in the pool a full hour,
           so a deposit made moments before a draw cannot take the prize.
-          Settling the draw needs a KMS proof fetched off chain; see the README
-          for the keeper flow.
+          Settling happens in the panel below, in this browser: the total weight
+          is published when the draw opens, so fetching its KMS proof needs no
+          wallet and no grant.
         </p>
       </div>
     </section>

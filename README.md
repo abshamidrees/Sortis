@@ -46,8 +46,9 @@ bug.
    costs the same gas as one that does, because reverting on an encrypted
    comparison would leak the balance. The app tells you this before you send.
 6. Open [`/app`](https://sortis.vercel.app/app) for the register, the current
-   draw and the history, and press **Open draw** to trigger one yourself. See
-   below.
+   draw and the history. Press **Open draw** to trigger one yourself, then
+   **Settle draw** in the panel below it to run the descent, then **Claim**.
+   The whole loop is in the browser; nothing here needs a script.
 7. Open [`/app/verify`](https://sortis.vercel.app/app/verify) and verify a
    draw. This works with no wallet connected.
 
@@ -71,18 +72,35 @@ prize will be zero unless yield has accrued since the last claim, which is
 honest rather than broken: the pot is what the yield source has produced, and
 on Sepolia that is whatever the mock adapter was last told to book.
 
-Settling is the second transaction and is not behind a button. `drawLot` needs
-a KMS decryption proof for the published total, which is an off-chain fetch
-through the relayer that takes long enough that a button would appear to hang.
-It runs from a script:
+### Settling, which anyone can also do
+
+Settling is the second transaction, and it is in the app: **Settle the open
+draw** appears on `/app` whenever an unsettled draw exists.
+
+`drawLot` needs the register's committed total as cleartext plus the KMS
+signatures over it, and `publishRootForDraw` publishes that handle as *publicly*
+decryptable when the draw opens. A public decrypt asks for something the
+contract has already declared public, so it needs no wallet, no EIP-712 grant
+and no signature, and it returns in about three seconds. That is what makes
+settling safe to put in a browser at all, and it is the difference from reading
+a balance, which does need a signed grant.
+
+Nothing about the draw's security passes through the browser. The lot is
+produced on chain inside `drawLot` by `FHE.randEuint64`, the contract refuses to
+run in the opening block, and it refuses if either root handle moved since. A
+dishonest settler can only waste their own gas.
+
+**As a keeper command**, for the same job without a browser:
 
 ```bash
-npx hardhat run scripts/draw.ts --network sepolia
+npm run settle
 ```
 
-**On mainnet this would run behind a keeper**, on the same two-transaction
-split, for the same reason the split exists: the root must be committed before
-any randomness is known. Nothing about the contract changes; the caller does.
+That settles the newest unsettled draw and prints the walk height, gas and
+measured HCU. **On mainnet this would run behind a keeper** on a timer, on the
+same two-transaction split and for the same reason the split exists: the root
+must be committed before any randomness is known. Nothing about the contract
+changes; only the caller does.
 
 ## What is encrypted, and what is not
 
