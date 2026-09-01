@@ -3,7 +3,19 @@
 import { useEffect, useState } from "react";
 
 import { HCU } from "@/lib/measurements";
-import { CONFIGURED, formatUnits6, readShardState, type ShardState } from "@/lib/chain";
+import {
+  CONFIGURED,
+  formatUnits6,
+  readShardState,
+  LEAF_OWNERS,
+  SETTLED_DRAWS,
+  SHARD,
+  type ShardState,
+} from "@/lib/chain";
+
+/** The newest draw the bundle knows has settled. Zero network. */
+const NEWEST_SETTLED =
+  [...SETTLED_DRAWS.values()].sort((a, b) => b.id - a.id)[0] ?? null;
 import styles from "./StatStrip.module.css";
 
 /**
@@ -69,7 +81,9 @@ function readCache(): ShardState | null {
             prize: BigInt(p.current.prize),
             totalWeight: BigInt(p.current.totalWeight),
             refHour: BigInt(p.current.refHour ?? 0),
-            drawnAtBlock: p.current.drawnAtBlock ? BigInt(p.current.drawnAtBlock) : null,
+            drawnAtBlock: p.current.drawnAtBlock
+              ? BigInt(p.current.drawnAtBlock)
+              : null,
           }
         : null,
     } as ShardState;
@@ -82,7 +96,9 @@ function writeCache(state: ShardState): void {
   try {
     sessionStorage.setItem(
       CACHE_KEY,
-      JSON.stringify(state, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+      JSON.stringify(state, (_k, v) =>
+        typeof v === "bigint" ? v.toString() : v
+      )
     );
   } catch {
     // A private window refuses storage. The strip still works, it just
@@ -130,10 +146,23 @@ export function StatStrip() {
 
   const cells: Cell[] = [
     { label: "SHARD", value: "001" },
-    { label: "HEIGHT", value: state ? String(state.depth) : LOADING },
+    /*
+      HEIGHT is a constructor argument and cannot change without a redeploy
+      that would change the addresses this app points at, so it comes from the
+      build-time snapshot rather than a read. It never says "reading".
+    */
+    { label: "HEIGHT", value: String(state?.depth ?? SHARD.depth) },
     {
       label: "STAKES",
-      value: state ? `${state.leafCount} / ${state.capacity}` : LOADING,
+      /*
+        Capacity is immutable and leaf assignment is append only, so the
+        snapshot's figures are correct until someone commits, at which point
+        the live read replaces them. Both are known before the page has spoken
+        to anything.
+      */
+      value: `${state?.leafCount ?? LEAF_OWNERS.size} / ${
+        state?.capacity ?? SHARD.capacity
+      }`,
     },
     {
       label: "POT",
@@ -142,15 +171,30 @@ export function StatStrip() {
     },
     {
       label: "DRAW",
-      value: state ? (state.drawCount > 0n ? `#${state.drawCount}` : "none yet") : LOADING,
+      value: state
+        ? state.drawCount > 0n
+          ? `#${state.drawCount}`
+          : "none yet"
+        : LOADING,
     },
     {
       label: "OPENED",
-      value: state?.current ? String(state.current.openedAtBlock) : LOADING,
+      /*
+        A settled draw's opening block is final, so the newest settled one is
+        in the snapshot and renders immediately. The live value takes over when
+        it arrives, which matters only when a newer draw has since settled.
+      */
+      value: state?.current
+        ? String(state.current.openedAtBlock)
+        : NEWEST_SETTLED
+        ? String(NEWEST_SETTLED.openedAtBlock)
+        : LOADING,
     },
     {
       label: "DEPTH",
-      value: `${depthUsed.toLocaleString("en-US")} / ${HCU.DEPTH_LIMIT.toLocaleString("en-US")}`,
+      value: `${depthUsed.toLocaleString(
+        "en-US"
+      )} / ${HCU.DEPTH_LIMIT.toLocaleString("en-US")}`,
       bar: depthPct,
     },
     {
@@ -167,12 +211,17 @@ export function StatStrip() {
           <div key={cell.label} className={styles.cell}>
             <span className={styles.label}>{cell.label}</span>
             <span className={styles.value} data-tone={cell.tone}>
-              {cell.dot ? <span className={styles.dot} data-state={cell.dot} /> : null}
+              {cell.dot ? (
+                <span className={styles.dot} data-state={cell.dot} />
+              ) : null}
               {cell.value}
             </span>
             {cell.bar !== undefined ? (
               <span className={styles.bar}>
-                <span className={styles.barFill} style={{ width: `${cell.bar}%` }} />
+                <span
+                  className={styles.barFill}
+                  style={{ width: `${cell.bar}%` }}
+                />
               </span>
             ) : null}
           </div>
