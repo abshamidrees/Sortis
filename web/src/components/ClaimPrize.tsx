@@ -225,8 +225,11 @@ export function ClaimPrize({ draw }: { draw: DrawRow | null }) {
           <p className={shell.note}>
             If you deposited after this draw opened, or less than an hour before
             it, your stake carried no weight when it was drawn and this claim
-            cannot pay. Open a draw yourself once your stake has crossed an hour
-            boundary, settle it, and claim that one.
+            cannot pay. Claiming anyway costs gas and moves an encrypted zero.
+            To become eligible, wait for your stake to cross an hour boundary
+            and open a draw with the control above. Settling it needs a KMS
+            proof fetched off chain, which runs from a keeper script rather than
+            from this page, so the operator closes that step.
           </p>
         ) : null}
 
