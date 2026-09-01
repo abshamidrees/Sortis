@@ -32,7 +32,22 @@ import shell from "@/components/chrome/AppShell.module.css";
  * belongs in a keeper rather than behind a button that would appear to hang.
  * The README documents the two-transaction flow and the script that runs it.
  */
-export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
+export function TriggerDraw({
+  onOpened,
+  /**
+   * An already-open draw, if there is one.
+   *
+   * Opening a second draw while the first is unsettled stacks them: every
+   * click created a draw nobody was going to finish, and pushed the stat strip
+   * onto one with no prize, no weight and no winner. There is now a Settle
+   * control directly below, so the honest behaviour is to point at it rather
+   * than to let the same mistake be made again.
+   */
+  pending,
+}: {
+  onOpened?: () => void;
+  pending?: { id: bigint } | null;
+}) {
   const { isConnected } = useAccount();
   const { walletChainId, wrongNetwork, ensureSepolia } = useSepolia();
   const chainId = walletChainId ?? SEPOLIA_ID;
@@ -172,16 +187,24 @@ export function TriggerDraw({ onOpened }: { onOpened?: () => void }) {
               className={shell.button}
               style={{ marginTop: "var(--s-3)" }}
               onClick={open}
-              disabled={state.status === "pending" || !openable}
+              disabled={
+                state.status === "pending" || !openable || Boolean(pending)
+              }
             >
-              {state.status === "pending" ? state.detail : "Open draw"}
+              {state.status === "pending"
+                ? state.detail
+                : pending
+                ? `Draw #${pending.id.toString()} is still open`
+                : "Open draw"}
             </button>
             <p
               className={`${shell.cost} ${
                 state.status === "failed" ? shell.fault : ""
               }`}
             >
-              {state.status === "idle" || state.status === "done"
+              {pending
+                ? "Settle the open draw below before opening another. Stacking draws leaves ones nobody finishes."
+                : state.status === "idle" || state.status === "done"
                 ? "No owner check. The only gate is the interval above."
                 : state.detail}
             </p>

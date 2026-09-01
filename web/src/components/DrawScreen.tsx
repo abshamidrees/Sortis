@@ -7,6 +7,7 @@ import { AppShell } from "@/components/chrome/AppShell";
 import { DrawColumn } from "@/components/DrawColumn";
 import { TriggerDraw } from "@/components/TriggerDraw";
 import { ClaimPrize } from "@/components/ClaimPrize";
+import { SettleDraw } from "@/components/SettleDraw";
 import { ETHERSCAN, HCU } from "@/lib/measurements";
 import type { Slot } from "@/lib/chain";
 import {
@@ -264,7 +265,19 @@ export function DrawScreen() {
 
         {/* --------------------------------------------------- current draw */}
         <div className={shell.stack}>
-          <TriggerDraw />
+          {/*
+            Open, then settle, then claim, in the order they happen.
+
+            Settle only appears when there is something to settle, and Trigger
+            is disabled while it is showing, so the loop cannot be left half
+            finished by clicking the first control twice.
+          */}
+          <TriggerDraw pending={state?.pendingDraw ?? null} />
+
+          <SettleDraw
+            draw={state?.pendingDraw ?? null}
+            onSettled={() => window.location.reload()}
+          />
 
           {/* Claims target the settled draw shown below, never the open one. */}
           <ClaimPrize draw={current} />

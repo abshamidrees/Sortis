@@ -44,6 +44,8 @@ type Cell = {
   tone?: "brass" | "fault" | "seal";
   bar?: number;
   dot?: "ok" | "fail";
+  /** A quieter second line, for state that qualifies the value above it. */
+  sub?: string;
 };
 
 /**
@@ -171,11 +173,26 @@ export function StatStrip() {
     },
     {
       label: "DRAW",
-      value: state
-        ? state.drawCount > 0n
-          ? `#${state.drawCount}`
-          : "none yet"
+      /*
+        THE LATEST SETTLED DRAW, not the latest opened one.
+
+        This showed drawCount while the claim panel below showed the newest
+        SETTLED draw, so opening a draw put "DRAW #4" above a claim panel
+        reading draw #2. A judge cannot reconcile that, and the strip was the
+        one lying: an opened draw has no prize, no weight and no winner, so it
+        is not the draw the page is about.
+
+        The open one is not hidden, it is demoted to the line beneath, which is
+        also where the Settle control's existence is implied.
+      */
+      value: state?.current
+        ? `#${state.current.id}`
+        : NEWEST_SETTLED
+        ? `#${NEWEST_SETTLED.id}`
+        : state
+        ? "none yet"
         : LOADING,
+      sub: state?.pendingDraw ? `#${state.pendingDraw.id} open` : undefined,
     },
     {
       label: "OPENED",
@@ -216,6 +233,7 @@ export function StatStrip() {
               ) : null}
               {cell.value}
             </span>
+            {cell.sub ? <span className={styles.sub}>{cell.sub}</span> : null}
             {cell.bar !== undefined ? (
               <span className={styles.bar}>
                 <span

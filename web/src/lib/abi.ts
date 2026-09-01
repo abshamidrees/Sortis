@@ -35,7 +35,13 @@ export const POOL_ABI = [
     inputs: [],
     outputs: [{ type: "uint8" }],
   },
-  { type: "function", name: "DEPTH", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+  {
+    type: "function",
+    name: "DEPTH",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint8" }],
+  },
   {
     type: "function",
     name: "timeUnitsNow",
@@ -186,6 +192,21 @@ export const DRAW_ABI = [
     outputs: [{ type: "uint256" }],
   },
   {
+    // The settling transaction. The cleartext and proof come from a PUBLIC
+    // decrypt of the root the contract published when the draw opened, so the
+    // browser can assemble this without a grant. The lot is produced on chain
+    // inside this call.
+    type: "function",
+    name: "drawLot",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "drawId", type: "uint256" },
+      { name: "abiEncodedClearValues", type: "bytes" },
+      { name: "decryptionProof", type: "bytes" },
+    ],
+    outputs: [],
+  },
+  {
     type: "function",
     name: "claimPrize",
     stateMutability: "nonpayable",
@@ -260,7 +281,13 @@ export const CUSDT_ABI = [
     ],
     outputs: [{ type: "bytes32" }],
   },
-  { type: "function", name: "decimals", stateMutability: "pure", inputs: [], outputs: [{ type: "uint8" }] },
+  {
+    type: "function",
+    name: "decimals",
+    stateMutability: "pure",
+    inputs: [],
+    outputs: [{ type: "uint8" }],
+  },
 ] as const;
 
 export const YIELD_ABI = [

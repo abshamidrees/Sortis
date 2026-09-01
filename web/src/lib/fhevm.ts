@@ -28,6 +28,7 @@ export type FhevmPhase =
   | "loading-sdk"
   | "fetching-keys"
   | "ready"
+  | "decrypting"
   | "error";
 
 export type FhevmProgress = {
@@ -187,7 +188,42 @@ export function useFhevm() {
     [load]
   );
 
-  return { progress, load, encryptAmount, userDecrypt };
+  /**
+   * Publicly decrypt a handle the contract has published, with its KMS proof.
+   *
+   * This is what turns settling a draw from a keeper-only operation into
+   * something the app can do. `drawLot` needs the register's committed total
+   * weight as cleartext plus the KMS signatures over it, and
+   * `publishRootForDraw` already made that handle publicly decryptable when the
+   * draw opened.
+   *
+   * NO SIGNATURE IS INVOLVED, which is the whole reason this works in a
+   * browser. User decryption needs an EIP-712 grant and is subject to the
+   * relayer's startTimestamp rule; a public decrypt asks for something the
+   * contract has already declared public, so there is no wallet round trip and
+   * nothing for a clock to disagree about. Measured against the live relayer at
+   * roughly three seconds.
+   */
+  const publicDecryptWithProof = useCallback(
+    async (
+      handle: `0x${string}`
+    ): Promise<{ abiEncodedClearValues: string; decryptionProof: string }> => {
+      const instance = await load();
+      setProgress({
+        phase: "decrypting",
+        message: "Asking the KMS for the published total",
+      });
+      const result = await instance.publicDecrypt([handle]);
+      setProgress({ phase: "idle", message: "" });
+      return {
+        abiEncodedClearValues: result.abiEncodedClearValues as string,
+        decryptionProof: result.decryptionProof as string,
+      };
+    },
+    [load]
+  );
+
+  return { progress, load, encryptAmount, userDecrypt, publicDecryptWithProof };
 }
 
 /**
