@@ -91,25 +91,38 @@ function VerifyBody() {
       if (!CONFIGURED) throw new Error("No draw contract configured.");
       const n = BigInt(id);
 
-      const [info, resolved, count] = await Promise.all([
-        publicClient.readContract({
-          address: DRAW,
-          abi: DRAW_ABI,
-          functionName: "drawInfo",
-          args: [n],
-        }),
-        publicClient.readContract({
-          address: DRAW,
-          abi: DRAW_ABI,
-          functionName: "resolvedLeafHandle",
-          args: [n],
-        }),
-        publicClient.readContract({
-          address: DRAW,
-          abi: DRAW_ABI,
-          functionName: "drawCount",
-        }),
-      ]);
+      /*
+        RETRIED, like every other read in the app.
+
+        These three went out raw, and a throttled provider does not always
+        answer an eth_call with an error: sometimes it answers with empty data.
+        viem then reports "Cannot decode zero data" for drawInfo, or decodes a
+        field to undefined and the next line fails converting it to a BigInt.
+        Both surfaced on this screen as though the DRAW were malformed, which
+        is the worst possible false accusation to make on the page whose job is
+        verifying that it is not.
+      */
+      const [info, resolved, count] = await resilientRead(() =>
+        Promise.all([
+          publicClient.readContract({
+            address: DRAW,
+            abi: DRAW_ABI,
+            functionName: "drawInfo",
+            args: [n],
+          }),
+          publicClient.readContract({
+            address: DRAW,
+            abi: DRAW_ABI,
+            functionName: "resolvedLeafHandle",
+            args: [n],
+          }),
+          publicClient.readContract({
+            address: DRAW,
+            abi: DRAW_ABI,
+            functionName: "drawCount",
+          }),
+        ])
+      );
 
       const [
         rootHandle,
@@ -273,12 +286,14 @@ function VerifyBody() {
         // checks waiting on a lot that does not exist.
         let target = total;
         for (let id = total; id >= 1n; id--) {
-          const info = (await publicClient.readContract({
-            address: DRAW,
-            abi: DRAW_ABI,
-            functionName: "drawInfo",
-            args: [id],
-          })) as readonly [
+          const info = (await resilientRead(() =>
+            publicClient.readContract({
+              address: DRAW,
+              abi: DRAW_ABI,
+              functionName: "drawInfo",
+              args: [id],
+            })
+          )) as readonly [
             string,
             bigint,
             bigint,
