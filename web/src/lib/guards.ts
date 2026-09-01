@@ -286,6 +286,28 @@ export function readTxError(error: unknown): TxFault {
     };
   }
 
+  /*
+    The relayer refusing to decrypt a published total.
+
+    It answers with a 500 and "Transaction simulation failed: Execution
+    reverted", which reads like the draw is malformed and is not. The
+    coprocessor computes the register's root asynchronously after openDraw, and
+    until that ciphertext exists the KMS has nothing to sign, so the simulation
+    reverts. The operator script hits exactly the same wall, which is how we
+    know it is not a browser problem.
+  */
+  if (
+    text.includes("public-decrypt") ||
+    text.includes("public_decrypt") ||
+    (text.includes("simulation failed") && text.includes("reverted"))
+  ) {
+    return {
+      kind: "rpc",
+      message:
+        "The KMS has not published this draw's total yet. The register root is computed after the draw opens and cannot be decrypted until it exists. Wait a minute and settle again.",
+    };
+  }
+
   if (
     text.includes("429") ||
     text.includes("too many requests") ||
