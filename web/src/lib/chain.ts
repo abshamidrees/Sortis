@@ -385,7 +385,17 @@ async function readDrawnEvents(): Promise<
  * production while every other log query on the site worked.
  */
 export async function readDrawnEvent(
-  drawId: bigint
+  drawId: bigint,
+  /**
+   * Skip the snapshot and go to the chain.
+   *
+   * VERIFY MUST PASS TRUE. A screen whose entire purpose is checking what the
+   * chain says cannot answer from a file this repository shipped: that would
+   * verify the build, not the deployment, and it is exactly the kind of
+   * shortcut that makes a verification page worthless. Every other caller is
+   * displaying a settled value and may take the frozen one.
+   */
+  fromChain = false
 ): Promise<{ lot: `0x${string}`; block: bigint } | null> {
   /*
     A settled draw's lot handle is final, so it is in the bundle.
@@ -396,7 +406,7 @@ export async function readDrawnEvent(
     request count, that was one of the most expensive things the app did and
     none of it was necessary.
   */
-  const frozen = SETTLED_DRAWS.get(Number(drawId));
+  const frozen = fromChain ? undefined : SETTLED_DRAWS.get(Number(drawId));
   if (frozen?.lotHandle && frozen.drawnAtBlock !== null) {
     return {
       lot: frozen.lotHandle as `0x${string}`,

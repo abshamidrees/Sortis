@@ -150,7 +150,16 @@ function VerifyBody() {
         );
       }
 
-      const drawn = await readDrawnEvent(n);
+      /*
+        TRUE, always. Verify reads the chain and nothing else.
+
+        Everywhere else in the app a settled draw is served from the build-time
+        snapshot, because its values are final and re-reading them spends
+        request budget for no new information. This screen is the one place
+        that trade is unacceptable: verifying a deployment against a file the
+        deployment shipped is not verification.
+      */
+      const drawn = await readDrawnEvent(n, true);
       const drawnBlock = drawn?.block ?? null;
       const lotHandle = drawn?.lot ?? null;
 
