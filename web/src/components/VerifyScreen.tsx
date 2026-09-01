@@ -12,6 +12,7 @@ import {
   readDrawnEvent,
   truncate,
   resilientRead,
+  SETTLED_DRAWS,
 } from "@/lib/chain";
 import { DRAW_ABI } from "@/lib/abi";
 import shell from "@/components/chrome/AppShell.module.css";
@@ -267,14 +268,26 @@ function VerifyBody() {
     // rendered an input and nothing else, so a judge arriving here saw an
     // apparently empty page and no reason to think anything was happening.
     setBusy(true);
-    /*
-      Retried, because this one read decides whether the route works at all.
 
-      Unwrapped, a single refused drawCount left the screen reading "Could not
-      reach Sepolia to find the latest draw", which is the state a judge met in
-      production. Everything the page then goes on to prove was reachable only
-      by guessing a draw id into the box.
+    /*
+      WHICH draw to open is navigation. WHETHER it holds up is verification.
+
+      Walking the chain backwards to find the newest settled draw cost a
+      drawCount read plus one drawInfo per draw, and on a rate limited provider
+      those were often the reads that failed, leaving the route showing nothing
+      at all. The snapshot already knows which draws have settled, so it picks
+      the target and the chain answers every question about it. Nothing about
+      the attestation is taken from the bundle.
     */
+    const newest = [...SETTLED_DRAWS.values()].sort((a, b) => b.id - a.id)[0];
+    if (newest) {
+      setDrawId(String(newest.id));
+      void verify(String(newest.id));
+      return () => {
+        alive = false;
+      };
+    }
+
     void resilientRead(() =>
       publicClient.readContract({
         address: DRAW,
@@ -290,9 +303,6 @@ function VerifyBody() {
           setError("No draw has been opened on this shard yet.");
           return;
         }
-        // Walk back to the most recent SETTLED draw. The newest draw may have
-        // been opened and not yet drawn, and landing a judge on that shows six
-        // checks waiting on a lot that does not exist.
         let target = total;
         for (let id = total; id >= 1n; id--) {
           const info = (await resilientRead(() =>

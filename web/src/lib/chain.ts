@@ -414,11 +414,33 @@ export async function readDrawnEvent(
     };
   }
 
+  /*
+    Start the scan at the block the draw OPENED, not at deployment.
+
+    A Drawn event cannot precede its own openDraw, so every window before that
+    is guaranteed empty and scanning them is pure cost. The bound comes from a
+    live drawInfo read rather than from the snapshot, so this narrows the
+    search without taking the answer on trust: whatever the scan finds is still
+    whatever the chain holds.
+  */
   const head = await publicClient.getBlockNumber();
+  let from = DEPLOY_BLOCK;
+  try {
+    const info = (await publicClient.readContract({
+      address: DRAW,
+      abi: DRAW_ABI,
+      functionName: "drawInfo",
+      args: [drawId],
+    })) as readonly [string, bigint, ...unknown[]];
+    if (info[1] > 0n) from = info[1];
+  } catch {
+    // Fall back to the full span rather than skipping blocks that may matter.
+  }
+
   const logs = await getLogsChunked<{
     args: { lotHandle?: `0x${string}` };
     blockNumber: bigint | null;
-  }>({ address: DRAW, event: EV_DRAWN, args: { drawId } }, DEPLOY_BLOCK, head);
+  }>({ address: DRAW, event: EV_DRAWN, args: { drawId } }, from, head);
 
   const log = logs[0];
   if (!log?.args?.lotHandle || log.blockNumber === null) return null;
