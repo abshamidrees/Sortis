@@ -3,8 +3,8 @@
   "network": "sepolia",
   "pool": "0xa57F6D5FC7780cbE5324EeC26d5a6BA88D22AeBa",
   "draw": "0x11625163932a8FD0cdB224B440c1C51C36Da0281",
-  "takenAtBlock": 11613268,
-  "takenAt": "2026-09-01T14:42:24.035Z",
+  "takenAtBlock": 11613512,
+  "takenAt": "2026-09-01T15:32:18.390Z",
   "shard": {
     "depth": 5,
     "capacity": 32,
@@ -60,6 +60,42 @@
       "resolvedLeaf": "0x70fe242fdcd565f0fe86042b6fdf31f06eb8a4f383ff0000000000aa36a70300",
       "lotHandle": "0x5a480457504b6d67b263368b9c5b0611b449b44365ff0000000000aa36a70500",
       "drawnAtBlock": 11598835
+    },
+    {
+      "id": 3,
+      "rootHandle": "0xb31305da3868f492e0116ec380ca5de3fb3e21a1adff0000000000aa36a70500",
+      "openedAtBlock": 11613025,
+      "prize": "0",
+      "totalWeight": "2083410000",
+      "walkHeight": 5,
+      "refHour": "121",
+      "resolvedLeaf": "0x58811a0fa2e2378e29cd2333ae65d4719fbfc6dbfbff0000000000aa36a70300",
+      "lotHandle": "0xf2d6ad1d9e2cb68b8b7a7d04dfc6ffb4f15b6c8456ff0000000000aa36a70500",
+      "drawnAtBlock": 11613506
+    },
+    {
+      "id": 4,
+      "rootHandle": "0x6619c29d6d3c1ea9462cf2d3306de435b2e9b7cd90ff0000000000aa36a70500",
+      "openedAtBlock": 11613089,
+      "prize": "0",
+      "totalWeight": "2083410000",
+      "walkHeight": 5,
+      "refHour": "121",
+      "resolvedLeaf": "0x19ece3dff89fd0fcde2304ef5d37e642c3cf22a633ff0000000000aa36a70300",
+      "lotHandle": "0x089db9cfaea9251989c1952e6a74f6f8a6c9021118ff0000000000aa36a70500",
+      "drawnAtBlock": 11613507
+    },
+    {
+      "id": 5,
+      "rootHandle": "0x9f225b5fd86732bf5f902070ee08472125694b6153ff0000000000aa36a70500",
+      "openedAtBlock": 11613509,
+      "prize": "25000000",
+      "totalWeight": "2120580000",
+      "walkHeight": 5,
+      "refHour": "122",
+      "resolvedLeaf": "0xa1c931046499bb5121e469758faecfc28c95515f54ff0000000000aa36a70300",
+      "lotHandle": "0x30313546140f882def07b945bc3e2318b7eafd0cdfff0000000000aa36a70500",
+      "drawnAtBlock": 11613511
     }
   ]
 }

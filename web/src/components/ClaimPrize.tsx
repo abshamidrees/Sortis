@@ -144,6 +144,14 @@ export function ClaimPrize({ draw }: { draw: DrawRow | null }) {
               : "none, commit first"}
           </span>
 
+          <span className={shell.kvKey}>Weighed at</span>
+          <span className={shell.kvValue}>
+            {draw ? `hour ${draw.refHour.toString()}` : "-"}
+            <span className={shell.kvAside}>
+              stakes held before this hour, and only those, could be drawn
+            </span>
+          </span>
+
           <span className={shell.kvKey}>Status</span>
           <span className={shell.kvValue}>
             {!settled
@@ -196,6 +204,31 @@ export function ClaimPrize({ draw }: { draw: DrawRow | null }) {
             </p>
           </>
         )}
+
+        {/*
+          What a depositor who joined today can and cannot win, said here.
+
+          A stake carries no weight until it has been in the pool a full hour,
+          and the walk reads weight at the reference hour captured when the
+          draw OPENED. So a deposit made now was worth nothing at the moment
+          every already-settled draw was opened, and it cannot win any of them.
+          It becomes eligible for a draw opened after its first hour boundary.
+
+          Without saying so, a new depositor claims this draw, the transaction
+          succeeds, nothing arrives, and the only available conclusions are
+          that they lost or that the app is broken. Neither is right: they were
+          never in this draw. That is a property of the anti-snipe rule working
+          rather than a failure, and it is only defensible if it is stated
+          before they send rather than discovered afterwards.
+        */}
+        {settled && hasLeaf === true ? (
+          <p className={shell.note}>
+            If you deposited after this draw opened, or less than an hour before
+            it, your stake carried no weight when it was drawn and this claim
+            cannot pay. Open a draw yourself once your stake has crossed an hour
+            boundary, settle it, and claim that one.
+          </p>
+        ) : null}
 
         {/*
           The whole point, stated before the button rather than after it.
