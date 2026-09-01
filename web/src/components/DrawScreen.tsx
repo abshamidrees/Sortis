@@ -174,9 +174,15 @@ export function DrawScreen() {
   */
   const columnHandles = useMemo(
     () =>
-      Array.from({ length: state?.capacity ?? 32 }, (_, i) =>
-        slots[i] ? truncate(slots[i]!.handle, 3) : EMPTY_SLOT
-      ),
+      Array.from({ length: state?.capacity ?? SNAPSHOT_CAPACITY }, (_, i) => {
+        const slot = slots[i];
+        // Three states, because there are three: never assigned, assigned with
+        // no handle read yet, and assigned with its handle here. The middle one
+        // used to render as the first, which turned a network problem into a
+        // false claim about the register.
+        if (!slot) return EMPTY_SLOT;
+        return slot.handle ? truncate(slot.handle, 3) : "sealed";
+      }),
     [slots, state]
   );
 
@@ -189,9 +195,11 @@ export function DrawScreen() {
    */
   const columnMeta = useMemo(
     () =>
-      Array.from({ length: state?.capacity ?? 32 }, (_, i) =>
-        slots[i] ? `${slots[i]!.hoursHeld}h` : ""
-      ),
+      Array.from({ length: state?.capacity ?? SNAPSHOT_CAPACITY }, (_, i) => {
+        const slot = slots[i];
+        if (!slot || slot.hoursHeld === null) return "";
+        return `${slot.hoursHeld}h`;
+      }),
     [slots, state]
   );
 
@@ -247,9 +255,9 @@ export function DrawScreen() {
               />
             </div>
             <p className={shell.note}>
-              Slot handles are live from Sepolia. The descent is illustrative:
-              the resolved leaf is encrypted, so no client can locate it. See
-              Verify for what is publicly checkable.
+              {slotsUnavailable
+                ? "Slot occupancy is from the build, so the register above is complete. The stake handles are read live and this RPC has not served them yet; they fill in when it does."
+                : "Slot handles are live from Sepolia. The descent is illustrative: the resolved leaf is encrypted, so no client can locate it. See Verify for what is publicly checkable."}
             </p>
           </div>
         </section>
