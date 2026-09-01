@@ -23,7 +23,12 @@ type RelayerInstance = Awaited<
   ReturnType<typeof import("@zama-fhe/relayer-sdk/web")["createInstance"]>
 >;
 
-export type FhevmPhase = "idle" | "loading-sdk" | "fetching-keys" | "ready" | "error";
+export type FhevmPhase =
+  | "idle"
+  | "loading-sdk"
+  | "fetching-keys"
+  | "ready"
+  | "error";
 
 export type FhevmProgress = {
   phase: FhevmPhase;
@@ -33,14 +38,19 @@ export type FhevmProgress = {
 let instancePromise: Promise<RelayerInstance> | null = null;
 
 const RPC =
-  process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
+  process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ??
+  "https://ethereum-sepolia-rpc.publicnode.com";
 
-function getInstance(onProgress: (p: FhevmProgress) => void): Promise<RelayerInstance> {
+function getInstance(
+  onProgress: (p: FhevmProgress) => void
+): Promise<RelayerInstance> {
   if (instancePromise) return instancePromise;
 
   instancePromise = (async () => {
     onProgress({ phase: "loading-sdk", message: "Loading the relayer SDK." });
-    const { initSDK, createInstance, SepoliaConfig } = await import("@zama-fhe/relayer-sdk/web");
+    const { initSDK, createInstance, SepoliaConfig } = await import(
+      "@zama-fhe/relayer-sdk/web"
+    );
 
     onProgress({
       phase: "fetching-keys",
@@ -63,7 +73,10 @@ function getInstance(onProgress: (p: FhevmProgress) => void): Promise<RelayerIns
 }
 
 export function useFhevm() {
-  const [progress, setProgress] = useState<FhevmProgress>({ phase: "idle", message: "" });
+  const [progress, setProgress] = useState<FhevmProgress>({
+    phase: "idle",
+    message: "",
+  });
   const instanceRef = useRef<RelayerInstance | null>(null);
 
   const load = useCallback(async () => {
@@ -75,7 +88,10 @@ export function useFhevm() {
       return instance;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setProgress({ phase: "error", message: `Relayer unreachable. ${message.slice(0, 90)}` });
+      setProgress({
+        phase: "error",
+        message: `Relayer unreachable. ${message.slice(0, 90)}`,
+      });
       throw error;
     }
   }, []);
@@ -89,10 +105,12 @@ export function useFhevm() {
       const { handles, inputProof } = await input.encrypt();
       return {
         handle: `0x${Buffer.from(handles[0]).toString("hex")}` as `0x${string}`,
-        inputProof: `0x${Buffer.from(inputProof).toString("hex")}` as `0x${string}`,
+        inputProof: `0x${Buffer.from(inputProof).toString(
+          "hex"
+        )}` as `0x${string}`,
       };
     },
-    [load],
+    [load]
   );
 
   /**
@@ -111,26 +129,43 @@ export function useFhevm() {
         types: Record<string, unknown>;
         primaryType: string;
         message: Record<string, unknown>;
-      }) => Promise<string>,
+      }) => Promise<string>
     ): Promise<bigint> => {
       const instance = await load();
 
       const keypair = instance.generateKeypair();
       // The SDK takes these as numbers here even though the ABI spells them
       // as strings elsewhere.
-      const startTimestamp = Math.floor(Date.now() / 1000);
+      /*
+        BACK-DATED A MINUTE, AND IT HAS TO BE.
+
+        The relayer rejects a grant whose startTimestamp is not strictly in the
+        past, answering "Validation failed for 1 field: requestValidity" with a
+        400. Sending Math.floor(Date.now() / 1000) is "now" by the browser's
+        clock and lands on or after "now" by the relayer's, so every decrypt on
+        this site failed while the code looked obviously correct.
+
+        Measured against the live relayer: now fails, now minus 60 succeeds,
+        and so does every earlier value. A minute is comfortably more skew than
+        two clocks will ever disagree by and it costs a minute off the end of a
+        window that lasts a day.
+      */
+      const startTimestamp = Math.floor(Date.now() / 1000) - 60;
       const durationDays = 1;
 
       const eip712 = instance.createEIP712(
         keypair.publicKey,
         [contract],
         startTimestamp,
-        durationDays,
+        durationDays
       );
 
       const signature = await signTypedData({
         domain: eip712.domain as unknown as Record<string, unknown>,
-        types: { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
+        types: {
+          UserDecryptRequestVerification:
+            eip712.types.UserDecryptRequestVerification,
+        },
         primaryType: "UserDecryptRequestVerification",
         message: eip712.message as unknown as Record<string, unknown>,
       });
@@ -143,13 +178,13 @@ export function useFhevm() {
         [contract],
         account,
         startTimestamp,
-        durationDays,
+        durationDays
       );
 
       const value = (results as Record<string, unknown>)[handle];
       return typeof value === "bigint" ? value : BigInt(String(value ?? 0));
     },
-    [load],
+    [load]
   );
 
   return { progress, load, encryptAmount, userDecrypt };
