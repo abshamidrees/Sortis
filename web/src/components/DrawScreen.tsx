@@ -11,6 +11,9 @@ import { ETHERSCAN, HCU } from "@/lib/measurements";
 import type { Slot } from "@/lib/chain";
 import {
   CONFIGURED,
+  LEAF_OWNERS,
+  SNAPSHOT_MATCHES_POOL,
+  slotsFromSnapshot,
   readDrawHistory,
   readDrawnEvent,
   readShardState,
@@ -41,6 +44,15 @@ type Filter = "all" | "drawn" | "open";
 const EMPTY_SLOT = "·";
 
 /**
+ * Capacity before the chain has said anything.
+ *
+ * The shard is height 5, so 32, and that is a deploy-time constant rather than
+ * a reading. Using it as the initial value lets the column render at full size
+ * on first paint instead of guessing and then reflowing.
+ */
+const SNAPSHOT_CAPACITY = 32;
+
+/**
  * How a lot handle reads.
  *
  * Three distinct cases, and collapsing the last two is what put "not drawn"
@@ -57,7 +69,18 @@ function lotHandleText(row: DrawRow): string {
 export function DrawScreen() {
   const [state, setState] = useState<ShardState | null>(null);
   const [history, setHistory] = useState<DrawRow[]>([]);
-  const [slots, setSlots] = useState<(Slot | null)[]>([]);
+  /*
+    The register is drawn before anything is fetched.
+
+    slotsFromSnapshot is synchronous and reads the bundle, so the column has
+    its full structure on the very first render. The effect below only ever
+    adds handles to it. Starting from [] and filling it on success is what put
+    thirty-two empty cells under a header reading 24 / 32 whenever the RPC
+    said no.
+  */
+  const [slots, setSlots] = useState<(Slot | null)[]>(() =>
+    slotsFromSnapshot(SNAPSHOT_CAPACITY)
+  );
   const [filter, setFilter] = useState<Filter>("all");
   const [failed, setFailed] = useState(false);
   const [slotsUnavailable, setSlotsUnavailable] = useState(false);
@@ -112,11 +135,17 @@ export function DrawScreen() {
           script come back empty in the browser. Saying so beats drawing 24
           middots and letting a judge conclude the shard is unfilled.
         */
-        if (next.leafCount > 0 && handles.every((h) => h === null)) {
-          setSlotsUnavailable(true);
-        } else {
-          setSlotsUnavailable(false);
-        }
+        /*
+          This flag is now about HANDLES, not about the register.
+
+          The register's occupancy comes from the bundle and cannot be
+          unavailable. What can be missing is the live stake ciphertext for
+          each occupied slot, and saying which of those two is missing is the
+          difference between "the RPC is busy" and "the shard is empty".
+        */
+        const assigned = handles.filter((h) => h !== null).length;
+        const read = handles.filter((h) => h?.handle).length;
+        setSlotsUnavailable(assigned > 0 && read === 0);
       } catch {
         if (alive) setFailed(true);
       }
@@ -189,11 +218,17 @@ export function DrawScreen() {
         <section className={shell.panel}>
           <div className={shell.panelHead}>
             <span className={shell.panelLabel}>Register, shard 001</span>
-            <span
-              className={shell.panelMeta}
-              data-tone={slotsUnavailable ? "fault" : undefined}
-            >
-              {state ? `${state.leafCount} / ${state.capacity}` : "reading"}
+            {/*
+              Never "reading". The occupancy is in the bundle.
+
+              The live count replaces the snapshot's the moment it arrives, and
+              until then the snapshot's is shown rather than a placeholder,
+              because it is the same number and it is already here.
+            */}
+            <span className={shell.panelMeta}>
+              {`${state?.leafCount ?? LEAF_OWNERS.size} / ${
+                state?.capacity ?? SNAPSHOT_CAPACITY
+              }`}
             </span>
           </div>
           <div className={shell.panelBody}>

@@ -528,7 +528,23 @@ export async function readDrawHistory(count: bigint): Promise<DrawRow[]> {
  * them costs nothing and makes the register auditable.
  */
 export type Slot = {
-  handle: `0x${string}`;
+  /**
+   * The leaf's owner, from the build-time snapshot. ALWAYS PRESENT.
+   *
+   * Leaf assignment is immutable, so this is structure rather than state and
+   * it is known before the page has spoken to anything. A slot exists because
+   * the snapshot says so, never because a read succeeded.
+   */
+  owner: Address;
+  /**
+   * The stake ciphertext, read live. NULL MEANS NOT READ YET.
+   *
+   * This is the only part of a slot that needs the network, and a slot with a
+   * null handle is an occupied slot whose balance handle has not arrived, not
+   * an empty one. Conflating those is what made a rate limited RPC render an
+   * empty register under a header reading 24 / 32.
+   */
+  handle: `0x${string}` | null;
   /**
    * Whole hours since this stake last changed.
    *
@@ -537,9 +553,53 @@ export type Slot = {
    * `reUSDe 102 days` and nowhere else. Hours held is the input to the weight
    * line, so a register slot that shows only a handle is hiding the number
    * that decides the draw.
+   *
+   * Null for the same reason `handle` is: not read yet.
    */
-  hoursHeld: number;
+  hoursHeld: number | null;
 };
+
+/**
+ * The register's structure, from the bundle, with no network at all.
+ *
+ * scripts/snapshot-leaves.ts freezes leaf to owner at build time. Leaves are
+ * assigned once and never reassigned, so this is not a cache with a staleness
+ * problem: it can only be INCOMPLETE, for anyone who committed after the
+ * snapshot was taken, and the live scan below picks those up.
+ *
+ * Everything the register needs in order to DRAW ITSELF is here. Which slots
+ * are occupied, and how many. No promise, no retry, no failure mode.
+ */
+export const LEAF_OWNERS: ReadonlyMap<number, Address> = new Map(
+  Object.entries(LEAF_SNAPSHOT.leaves).map(([leaf, owner]) => [
+    Number(leaf),
+    owner as Address,
+  ])
+);
+
+/**
+ * The snapshot's pool, so a redeployed pool cannot render stale structure.
+ *
+ * If these disagree the snapshot describes a register that is no longer the
+ * one being displayed, and showing it would be worse than showing nothing.
+ */
+export const SNAPSHOT_MATCHES_POOL =
+  LEAF_SNAPSHOT.pool.toLowerCase() === (ADDRESSES.pool ?? "").toLowerCase();
+
+/**
+ * The register as the bundle knows it. Synchronous, and total.
+ *
+ * Call this to paint the column on first render, before any effect has run.
+ * The handles fill in afterwards.
+ */
+export function slotsFromSnapshot(capacity: number): (Slot | null)[] {
+  const slots: (Slot | null)[] = Array.from({ length: capacity }, () => null);
+  if (!SNAPSHOT_MATCHES_POOL) return slots;
+  for (const [leaf, owner] of LEAF_OWNERS) {
+    if (leaf < capacity) slots[leaf] = { owner, handle: null, hoursHeld: null };
+  }
+  return slots;
+}
 
 const SLOT_CACHE_KEY = "sortis.slots";
 const SLOT_CACHE_MS = 120_000;
@@ -559,10 +619,9 @@ function readSlotCache(): (Slot | null)[] | null {
       expires. Checking on read as well as on write means an existing poisoned
       entry is discarded rather than waited out.
     */
-    const slots = parsed.slots as (Slot | null)[];
-    const known = Object.keys(LEAF_SNAPSHOT.leaves).length;
-    if (slots.filter((slot) => slot !== null).length < known) return null;
-    return slots;
+    // Handles only. Structure comes from the bundle, so there is nothing here
+    // whose absence could blank the register.
+    return parsed.slots as (Slot | null)[];
   } catch {
     return null;
   }
@@ -579,33 +638,47 @@ function readSlotCache(): (Slot | null)[] | null {
 export async function readSlotHandles(
   capacity: number
 ): Promise<(Slot | null)[]> {
-  const cached = readSlotCache();
-  if (cached) return cached;
-
-  const slots: (Slot | null)[] = Array.from({ length: capacity }, () => null);
-
   /*
-    THE SNAPSHOT FIRST, THE LOG SCAN ONLY FOR WHAT CAME AFTER IT.
+    STRUCTURE FIRST, AND STRUCTURE NEVER FAILS.
 
-    Discovering owners by scanning LeafAssigned was the least reliable read in
-    the app. A free RPC tier serves that scan inconsistently, so the register
-    rendered 32 empty slots under a header reading "24 / 32" on roughly two
-    loads in three, on the app's main route.
+    The register begins fully drawn, from the bundle. Which slots are occupied
+    is immutable data that scripts/snapshot-leaves.ts froze at build time, so
+    it is known before this function has spoken to anything, and no network
+    outcome can take it away. Every slot below already exists; the only thing
+    this function adds is each one's live handle.
 
-    A leaf is assigned once and never reassigned, so the mapping is immutable
-    and scripts/snapshot-leaves.ts freezes it into the bundle at build time.
-    That is not a cache that can go stale; it can only be incomplete, for
-    anyone who committed after it was taken. The scan still runs to find those,
-    and now a refused scan costs the newest depositors rather than everyone.
-
-    Balances are still read live below. They change on every commit and
-    release, and that read is one multicall, which is the half that works.
+    That inversion is the whole fix. Previously the slot array started empty
+    and was populated only if a read succeeded, so a refused RPC produced a
+    register of thirty-two empty cells under a header reading 24 / 32, which is
+    a confident statement that the shard is unfilled. Structure and state are
+    different kinds of thing and only one of them needs the network.
   */
-  const owners = new Map<number, Address>();
-  for (const [leaf, owner] of Object.entries(LEAF_SNAPSHOT.leaves)) {
-    owners.set(Number(leaf), owner as Address);
+  const slots = slotsFromSnapshot(capacity);
+
+  const owners = new Map(LEAF_OWNERS);
+
+  const cached = readSlotCache();
+  if (cached) {
+    // The cache only ever holds handles. Structure still comes from above, so
+    // a stale or partial cache cannot empty the register either.
+    cached.forEach((slot, i) => {
+      if (slot && slots[i])
+        slots[i] = {
+          ...slots[i]!,
+          handle: slot.handle,
+          hoursHeld: slot.hoursHeld,
+        };
+    });
+    if (cached.every((slot, i) => !slots[i] || slot?.handle)) return slots;
   }
 
+  /*
+    The log scan now looks ONLY for leaves added since the snapshot.
+
+    It is the least reliable read in the app and it is no longer load bearing:
+    a refused scan costs the newest depositors their slot until the next build,
+    rather than costing everyone the whole register.
+  */
   try {
     const head = await publicClient.getBlockNumber();
     // Start from the snapshot, never before it. Both as bigints, because
@@ -619,6 +692,14 @@ export async function readSlotHandles(
       for (const log of logs) {
         if (log.args.owner !== undefined && log.args.leaf !== undefined) {
           owners.set(Number(log.args.leaf), log.args.owner);
+          const leaf = Number(log.args.leaf);
+          if (leaf < capacity && !slots[leaf]) {
+            slots[leaf] = {
+              owner: log.args.owner,
+              handle: null,
+              hoursHeld: null,
+            };
+          }
         }
       }
     }
@@ -628,8 +709,20 @@ export async function readSlotHandles(
     console.warn("sortis: could not scan for leaves added since the snapshot.");
   }
 
-  // The chain's own clock, in the same units lastChange is recorded in.
-  const nowSeconds = Number((await publicClient.getBlock()).timestamp);
+  /*
+    The chain's clock, falling back to the browser's.
+    
+    hoursHeld is whole hours, so a few seconds of drift between a Sepolia block
+    timestamp and the local clock cannot change the rendered figure. Making the
+    whole register wait on one more network read, and fail with it, buys
+    nothing at that resolution.
+  */
+  let nowSeconds = Math.floor(Date.now() / 1000);
+  try {
+    nowSeconds = Number((await publicClient.getBlock()).timestamp);
+  } catch {
+    // Local clock it is.
+  }
 
   /*
     ONE multicall, not 48 reads.
@@ -715,27 +808,42 @@ export async function readSlotHandles(
   entries.forEach(([leaf], i) => {
     const handleResult = results[i * 2];
     const changeResult = results[i * 2 + 1];
+    const existing = slots[leaf];
+    if (!existing) return;
+
+    /*
+      A FAILED READ LEAVES THE SLOT STANDING.
+
+      This used to write null here, which deleted a leaf the snapshot knows
+      exists because one eth_call was refused. The slot is occupied whatever
+      the RPC says; only its handle is unknown, and `handle: null` already
+      means exactly that.
+    */
     if (
       handleResult?.status !== "success" ||
       changeResult?.status !== "success"
     ) {
       failed++;
-      slots[leaf] = null;
       return;
     }
+
     const handle = handleResult.result as `0x${string}`;
-    slots[leaf] =
-      handle === ZERO_HANDLE
-        ? null
-        : {
-            handle,
-            hoursHeld: Math.max(
-              0,
-              Math.floor(
-                (nowSeconds - Number(changeResult.result)) / TIME_UNIT_SECONDS
-              )
-            ),
-          };
+    slots[leaf] = {
+      ...existing,
+      /*
+        A zero handle is a leaf whose stake has been fully released. The leaf
+        is still assigned and still occupies its slot, so this keeps the slot
+        and records that there is no ciphertext to show, rather than pretending
+        the depositor was never here.
+      */
+      handle: handle === ZERO_HANDLE ? null : handle,
+      hoursHeld: Math.max(
+        0,
+        Math.floor(
+          (nowSeconds - Number(changeResult.result)) / TIME_UNIT_SECONDS
+        )
+      ),
+    };
   });
 
   if (failed > 0) {
@@ -764,10 +872,17 @@ export async function readSlotHandles(
 
     A read is complete when every owner the snapshot knows about resolved.
   */
-  const populated = slots.filter((slot) => slot !== null).length;
+  /*
+    The cache holds HANDLES, and only a complete set of them.
+
+    Structure is never cached because it is never fetched, so a cache miss or a
+    poisoned entry can no longer empty the register: the worst it can do is
+    leave the handles unread, which the slots already express.
+  */
+  const withHandles = slots.filter((slot) => slot?.handle).length;
   const expected = [...owners.keys()].filter((leaf) => leaf < capacity).length;
 
-  if (expected > 0 && populated === expected) {
+  if (expected > 0 && failed === 0) {
     try {
       sessionStorage.setItem(
         SLOT_CACHE_KEY,
@@ -778,7 +893,7 @@ export async function readSlotHandles(
     }
   } else if (expected > 0) {
     console.warn(
-      `sortis: read ${populated} of ${expected} assigned leaves. Not caching a partial register.`
+      `sortis: ${withHandles} of ${expected} slot handles read. Structure is from the bundle and is unaffected.`
     );
   }
 
