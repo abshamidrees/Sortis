@@ -3,8 +3,8 @@
   "network": "sepolia",
   "pool": "0xa57F6D5FC7780cbE5324EeC26d5a6BA88D22AeBa",
   "draw": "0x11625163932a8FD0cdB224B440c1C51C36Da0281",
-  "takenAtBlock": 11613512,
-  "takenAt": "2026-09-01T15:32:18.390Z",
+  "takenAtBlock": 11636747,
+  "takenAt": "2026-09-04T23:56:29.619Z",
   "shard": {
     "depth": 5,
     "capacity": 32,
@@ -34,7 +34,8 @@
     "20": "0x1bF6E59162B47DC060773fed59666102AE159906",
     "21": "0x98Ee14A00779E43E3cC397734850eB524EC84dB0",
     "22": "0x33147c285860237D61c12696a6678C725f2Af692",
-    "23": "0xF75bf773665c79Af7E7e6E0A0a447972EDFff977"
+    "23": "0xF75bf773665c79Af7E7e6E0A0a447972EDFff977",
+    "24": "0xf6bE3e63B2b1Dac4C5D0F981438ed4D11311A389"
   },
   "settledDraws": [
     {

@@ -669,6 +669,39 @@ export const SETTLED_DRAWS: ReadonlyMap<
   (typeof LEAF_SNAPSHOT.settledDraws)[number]
 > = new Map(LEAF_SNAPSHOT.settledDraws.map((d) => [d.id, d]));
 
+/**
+ * Every settled draw as a DrawRow, from the bundle, with no network at all.
+ *
+ * Same argument as slotsFromSnapshot. A settled draw is final, so the history
+ * table and the current-draw panel can be drawn before anything is fetched and
+ * no RPC outcome can empty them. Without this, one refused read put "Chain
+ * unreachable" over a history of five verifiable draws and "no draw" in the
+ * claim panel, while the stat strip two inches above showed #5.
+ */
+export function snapshotDrawRows(): DrawRow[] {
+  return [...SETTLED_DRAWS.values()]
+    .sort((a, b) => b.id - a.id)
+    .map((d) => ({
+      id: BigInt(d.id),
+      rootHandle: d.rootHandle as `0x${string}`,
+      openedAtBlock: BigInt(d.openedAtBlock),
+      prize: BigInt(d.prize),
+      totalWeight: BigInt(d.totalWeight),
+      walkHeight: d.walkHeight,
+      lotDrawn: true,
+      refHour: BigInt(d.refHour),
+      resolvedLeaf: d.resolvedLeaf as `0x${string}`,
+      status: "drawn" as DrawStatus,
+      lotHandle: (d.lotHandle as `0x${string}` | null) ?? null,
+      drawnAtBlock: d.drawnAtBlock === null ? null : BigInt(d.drawnAtBlock),
+    }));
+}
+
+/** The newest settled draw the bundle knows about. Zero network. */
+export function newestSettledFromSnapshot(): DrawRow | null {
+  return snapshotDrawRows()[0] ?? null;
+}
+
 /** Immutable constructor arguments. Zero network. */
 export const SHARD = LEAF_SNAPSHOT.shard;
 

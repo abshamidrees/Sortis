@@ -15,6 +15,8 @@ import {
   LEAF_OWNERS,
   SNAPSHOT_MATCHES_POOL,
   slotsFromSnapshot,
+  snapshotDrawRows,
+  newestSettledFromSnapshot,
   readDrawHistory,
   readDrawnEvent,
   readShardState,
@@ -69,7 +71,15 @@ function lotHandleText(row: DrawRow): string {
 
 export function DrawScreen() {
   const [state, setState] = useState<ShardState | null>(null);
-  const [history, setHistory] = useState<DrawRow[]>([]);
+  /*
+    History starts from the bundle, like the register does.
+
+    Settled draws are final, so they are shipped in the snapshot and drawn on
+    first render. A live read replaces them and adds any open draw. Starting
+    empty is what put "Chain unreachable" over five verifiable draws when one
+    request was refused.
+  */
+  const [history, setHistory] = useState<DrawRow[]>(() => snapshotDrawRows());
   /*
     The register is drawn before anything is fetched.
 
@@ -118,15 +128,31 @@ export function DrawScreen() {
           });
         }
 
-        const [rows, handles] = await Promise.all([
+        /*
+          Settled independently. One refused read must not empty the other.
+
+          These were a single Promise.all inside one try, so a dropped history
+          request also discarded the slot handles and tripped the catch that
+          blanks the whole route.
+        */
+        const [rows, handles] = await Promise.allSettled([
           next.drawCount > 0n
             ? readDrawHistory(next.drawCount)
             : Promise.resolve([]),
           readSlotHandles(next.capacity),
         ]);
         if (!alive) return;
-        setHistory(rows);
-        setSlots(handles);
+
+        // Only replace the bundle's history with a live one that has at least
+        // as much in it. A partial read is not an improvement on the snapshot.
+        if (
+          rows.status === "fulfilled" &&
+          rows.value.length >= snapshotDrawRows().length
+        ) {
+          setHistory(rows.value);
+        }
+        const handleList = handles.status === "fulfilled" ? handles.value : [];
+        if (handles.status === "fulfilled") setSlots(handleList);
 
         /*
           A register with leaves that reads as empty is a failed read, not an
@@ -144,8 +170,8 @@ export function DrawScreen() {
           each occupied slot, and saying which of those two is missing is the
           difference between "the RPC is busy" and "the shard is empty".
         */
-        const assigned = handles.filter((h) => h !== null).length;
-        const read = handles.filter((h) => h?.handle).length;
+        const assigned = handleList.filter((h) => h !== null).length;
+        const read = handleList.filter((h) => h?.handle).length;
         setSlotsUnavailable(assigned > 0 && read === 0);
       } catch {
         if (alive) setFailed(true);
@@ -217,7 +243,15 @@ export function DrawScreen() {
     filter === "all" ? true : filter === "drawn" ? row.lotDrawn : !row.lotDrawn
   );
 
-  const current = state?.current ?? null;
+  /*
+    The claim panel falls back to the bundle's newest settled draw.
+
+    It read `state?.current`, so a single refused readShardState rendered
+    "no draw" and a disabled Claim button while the stat strip beside it showed
+    draw #5 from the snapshot. The two cannot be allowed to disagree, and the
+    one with a prize, a weight and a winner is the one to trust.
+  */
+  const current = state?.current ?? newestSettledFromSnapshot();
   const levels = state ? Math.max(state.depth, 1) : 5;
 
   return (

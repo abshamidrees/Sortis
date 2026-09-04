@@ -143,6 +143,27 @@ function VerifyBody() {
         bigint
       ];
 
+      /*
+        Check the read came back whole before using any of it.
+
+        A throttled provider does not always answer an eth_call with an error:
+        sometimes it answers with empty data, and viem then decodes fields to
+        undefined. The next line to touch one threw "Cannot convert undefined to
+        a BigInt", which appeared on screen as though the DRAW were malformed
+        rather than the response. On the screen whose job is establishing that a
+        draw is well formed, that is the worst possible thing to say wrongly.
+      */
+      if (
+        rootHandle === undefined ||
+        openedAtBlock === undefined ||
+        lotDrawn === undefined ||
+        resolved === undefined
+      ) {
+        throw new Error(
+          "The RPC returned an incomplete response for this draw, so nothing here could be checked. This is the endpoint, not the draw. Press Verify again."
+        );
+      }
+
       if (openedAtBlock === 0n) {
         throw new Error(
           `Draw ${id} does not exist. This shard has ${(
