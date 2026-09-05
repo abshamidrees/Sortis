@@ -3,8 +3,8 @@
   "network": "sepolia",
   "pool": "0xa57F6D5FC7780cbE5324EeC26d5a6BA88D22AeBa",
   "draw": "0x11625163932a8FD0cdB224B440c1C51C36Da0281",
-  "takenAtBlock": 11636747,
-  "takenAt": "2026-09-04T23:56:29.619Z",
+  "takenAtBlock": 11636989,
+  "takenAt": "2026-09-05T00:47:24.149Z",
   "shard": {
     "depth": 5,
     "capacity": 32,
