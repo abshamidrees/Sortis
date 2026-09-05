@@ -525,6 +525,23 @@ export async function readShardState(): Promise<ShardState> {
       current = newest;
     } else {
       pendingDraw = newest;
+      /*
+        Walk back to the OLDEST open draw, not the newest.
+
+        Settling newest-first leaves older ones behind forever, and the older
+        one is usually the one carrying a prize: draw 6 held 10 cUSDT while
+        draw 7 held nothing, and the panel pointed at 7. Oldest-first clears
+        the backlog in the order it accumulated.
+      */
+      for (
+        let id = count - 1n, tries = 0;
+        id > 0n && tries < 4;
+        id--, tries++
+      ) {
+        const older = await readDraw(id);
+        if (older.lotDrawn) break;
+        pendingDraw = older;
+      }
       // Walk back to the newest draw that actually settled. Bounded at four so
       // a long unsettled tail cannot turn one strip poll into a dozen reads.
       for (

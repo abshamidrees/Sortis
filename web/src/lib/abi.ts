@@ -86,6 +86,20 @@ export const POOL_ABI = [
   },
   {
     type: "function",
+    name: "rootIntercept",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "rootSlope",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "bytes32" }],
+  },
+  {
+    type: "function",
     name: "commit",
     stateMutability: "nonpayable",
     inputs: [
@@ -190,6 +204,19 @@ export const DRAW_ABI = [
     stateMutability: "nonpayable",
     inputs: [],
     outputs: [{ type: "uint256" }],
+  },
+  {
+    // The register roots this draw committed to when it opened. drawLot
+    // reverts if either has moved since, so reading them is how the app knows
+    // whether a draw can still be settled at all.
+    type: "function",
+    name: "committedHandles",
+    stateMutability: "view",
+    inputs: [{ name: "drawId", type: "uint256" }],
+    outputs: [
+      { name: "interceptHandle", type: "bytes32" },
+      { name: "slopeHandle", type: "bytes32" },
+    ],
   },
   {
     // The settling transaction. The cleartext and proof come from a PUBLIC

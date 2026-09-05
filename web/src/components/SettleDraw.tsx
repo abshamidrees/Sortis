@@ -8,8 +8,8 @@ import {
   usePublicClient,
 } from "wagmi";
 
-import { DRAW_ABI } from "@/lib/abi";
-import { DRAW, publicClient, type DrawRow } from "@/lib/chain";
+import { DRAW_ABI, POOL_ABI } from "@/lib/abi";
+import { DRAW, POOL, publicClient, type DrawRow } from "@/lib/chain";
 import { readTxError, SEPOLIA_ID } from "@/lib/guards";
 import { useFhevm } from "@/lib/fhevm";
 import { useSepolia } from "@/lib/useSepolia";
@@ -58,6 +58,17 @@ export function SettleDraw({
     detail?: string;
   }>({ status: "idle" });
   const [blocksToGo, setBlocksToGo] = useState<number | null>(null);
+  /*
+    Has the register moved since this draw opened?
+
+    drawLot compares the intercept and slope roots it recorded at openDraw
+    against the pool's current ones and reverts with RegisterMovedSinceOpen if
+    either changed. Any commit or release between the two transactions does
+    that, permanently: the draw can never be settled and no amount of retrying
+    helps. Offering a Settle button that is guaranteed to revert wastes a
+    judge's gas and reads as a broken app, so the check happens here first.
+  */
+  const [stranded, setStranded] = useState<boolean | null>(null);
 
   const openedAt = draw?.openedAtBlock ?? null;
 
@@ -88,6 +99,41 @@ export function SettleDraw({
     };
   }, [openedAt]);
 
+  useEffect(() => {
+    if (!draw) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const [committed, intercept, slope] = await Promise.all([
+          publicClient.readContract({
+            address: DRAW,
+            abi: DRAW_ABI,
+            functionName: "committedHandles",
+            args: [draw.id],
+          }) as Promise<readonly [`0x${string}`, `0x${string}`]>,
+          publicClient.readContract({
+            address: POOL,
+            abi: POOL_ABI,
+            functionName: "rootIntercept",
+          }),
+          publicClient.readContract({
+            address: POOL,
+            abi: POOL_ABI,
+            functionName: "rootSlope",
+          }),
+        ]);
+        if (!alive) return;
+        setStranded(committed[0] !== intercept || committed[1] !== slope);
+      } catch {
+        // Unknown. The button stays available and the contract is the judge.
+        if (alive) setStranded(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [draw]);
+
   const settle = useCallback(async () => {
     if (!draw) return;
     setState({ status: "pending", detail: "Checking network" });
@@ -114,6 +160,18 @@ export function SettleDraw({
         address: DRAW,
         abi: DRAW_ABI,
         functionName: "drawLot",
+        /*
+          AN EXPLICIT GAS LIMIT, BECAUSE ESTIMATION OVERSHOOTS THE BLOCK CAP.
+
+          The wallet rejected this with "transaction gas limit too high
+          (cap: 16777216, tx: 21000000)". Estimating an FHE-heavy call in the
+          browser produced 21,000,000, which is above Sepolia's block gas cap,
+          so the transaction was refused before it ever reached the contract.
+          Measured drawLot cost is 2,566,642 and 2,583,738 gas across the two
+          settled draws, so five million is close to double the headroom needed
+          and a third of the cap.
+        */
+        gas: 5_000_000n,
         args: [
           draw.id,
           abiEncodedClearValues as `0x${string}`,
@@ -144,7 +202,11 @@ export function SettleDraw({
 
   const tooEarly = blocksToGo !== null && blocksToGo > 0;
   const canSettle =
-    isConnected && !wrongNetwork && !tooEarly && state.status !== "pending";
+    isConnected &&
+    !wrongNetwork &&
+    !tooEarly &&
+    stranded !== true &&
+    state.status !== "pending";
 
   return (
     <section className={shell.panel}>
@@ -165,6 +227,21 @@ export function SettleDraw({
             data-tone={draw.prize > 0n ? "brass" : undefined}
           >
             {(Number(draw.prize) / 1e6).toFixed(6)} cUSDT
+          </span>
+
+          <span className={shell.kvKey}>Register</span>
+          <span
+            className={shell.kvValue}
+            data-tone={stranded === true ? "fault" : undefined}
+          >
+            {stranded === null
+              ? "reading"
+              : stranded
+              ? "moved since this draw opened"
+              : "unchanged since this draw opened"}
+            <span className={shell.kvAside}>
+              a commit or release between the two transactions voids the draw
+            </span>
           </span>
 
           <span className={shell.kvKey}>Randomness</span>
@@ -201,6 +278,8 @@ export function SettleDraw({
             >
               {state.status === "pending"
                 ? state.detail
+                : stranded === true
+                ? "This draw can no longer be settled"
                 : tooEarly
                 ? "Waiting for the next block"
                 : "Settle draw"}
@@ -212,6 +291,8 @@ export function SettleDraw({
             >
               {state.status === "failed" || state.status === "done"
                 ? state.detail
+                : stranded === true
+                ? "Someone committed or released after this draw opened, so its register roots no longer match and drawLot would revert. Open a new draw instead."
                 : "Two steps: a public decrypt of the committed total, then one transaction."}
             </p>
           </>
