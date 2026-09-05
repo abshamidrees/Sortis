@@ -31,7 +31,8 @@ import type { PrivyClientConfig } from "@privy-io/react-auth";
 export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "";
 
 export const RPC_URL =
-  process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
+  process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL ??
+  "https://ethereum-sepolia-rpc.publicnode.com";
 
 /**
  * Sepolia only. There is no mainnet deployment, and a chain switcher that
@@ -60,7 +61,24 @@ export const privyConfig: PrivyClientConfig = {
     accentColor: "#A87A2E",
     // --stone, so the card sits on the same ground as the app.
     logo: "/sortis-mark.svg",
-    walletList: ["metamask", "rainbow", "coinbase_wallet", "wallet_connect"],
+    /*
+      Rabby and every other injected wallet, not a hand-picked four.
+
+      The list was metamask, rainbow, coinbase and walletconnect, so a judge
+      with Rabby installed opened the picker and did not see their own wallet.
+      "detected_wallets" surfaces whatever the browser actually has injected,
+      which is the entry that makes the list correct for someone I have not
+      thought of, and Rabby is named explicitly so it appears whether or not
+      detection fires.
+    */
+    walletList: [
+      "detected_wallets",
+      "metamask",
+      "rabby_wallet",
+      "rainbow",
+      "coinbase_wallet",
+      "wallet_connect",
+    ],
     showWalletLoginFirst: true,
   },
 

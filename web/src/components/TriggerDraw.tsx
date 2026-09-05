@@ -44,9 +44,20 @@ export function TriggerDraw({
    * than to let the same mistake be made again.
    */
   pending,
+  /**
+   * Whether that open draw can still be settled.
+   *
+   * A STRANDED DRAW MUST NOT BLOCK OPENING A NEW ONE. Blocking on any open
+   * draw at all was a trap: a draw is voided permanently by any commit or
+   * release after it opens, so one deposit could lock the Open control forever
+   * with a draw nobody could ever settle. Draws 6, 7 and 8 died that way and
+   * between them would have made the control unusable for good.
+   */
+  pendingStranded,
 }: {
   onOpened?: () => void;
   pending?: { id: bigint } | null;
+  pendingStranded?: boolean | null;
 }) {
   const { isConnected } = useAccount();
   const { walletChainId, wrongNetwork, ensureSepolia } = useSepolia();
@@ -202,7 +213,9 @@ export function TriggerDraw({
                 state.status === "failed" ? shell.fault : ""
               }`}
             >
-              {pending
+              {pending && pendingStranded === true
+                ? `Draw #${pending.id.toString()} can never be settled, because the register moved after it opened. Opening a new one is the way forward.`
+                : pending
                 ? "Settle the open draw below before opening another. Stacking draws leaves ones nobody finishes."
                 : state.status === "idle" || state.status === "done"
                 ? "No owner check. The only gate is the interval above."

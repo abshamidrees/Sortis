@@ -227,6 +227,15 @@ export type ShardState = {
   current: DrawRow | null;
   /** An open draw sitting in front of `current`, when one exists. */
   pendingDraw: DrawRow | null;
+  /**
+   * Whether that open draw can still be settled.
+   *
+   * drawLot compares the register roots recorded at openDraw against the live
+   * ones and reverts if either moved, so ANY commit or release after a draw
+   * opens voids it permanently. Draws 6, 7 and 8 all died that way. Null means
+   * the check could not be made.
+   */
+  pendingStranded: boolean | null;
   rpcOk: boolean;
 };
 
@@ -572,6 +581,41 @@ export async function readShardState(): Promise<ShardState> {
     }
   }
 
+  /*
+    Is the open draw already dead?
+
+    Three reads, and only when a draw is actually open. Without this the app
+    cannot tell a draw waiting to be settled from one that can never be, and
+    both of those states have to drive different buttons: Settle must refuse,
+    and Open must be allowed precisely because the current one is finished.
+  */
+  let pendingStranded: boolean | null = null;
+  if (pendingDraw) {
+    try {
+      const [committed, intercept, slope] = await Promise.all([
+        publicClient.readContract({
+          address: DRAW,
+          abi: DRAW_ABI,
+          functionName: "committedHandles",
+          args: [pendingDraw.id],
+        }) as Promise<readonly [`0x${string}`, `0x${string}`]>,
+        publicClient.readContract({
+          address: POOL,
+          abi: POOL_ABI,
+          functionName: "rootIntercept",
+        }),
+        publicClient.readContract({
+          address: POOL,
+          abi: POOL_ABI,
+          functionName: "rootSlope",
+        }),
+      ]);
+      pendingStranded = committed[0] !== intercept || committed[1] !== slope;
+    } catch {
+      pendingStranded = null;
+    }
+  }
+
   return {
     depth: Number(depth),
     capacity: Number(capacity),
@@ -583,6 +627,7 @@ export async function readShardState(): Promise<ShardState> {
     blockNumber,
     current,
     pendingDraw,
+    pendingStranded,
     rpcOk: true,
   };
 }

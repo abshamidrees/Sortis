@@ -306,7 +306,10 @@ export function DrawScreen() {
             is disabled while it is showing, so the loop cannot be left half
             finished by clicking the first control twice.
           */}
-          <TriggerDraw pending={state?.pendingDraw ?? null} />
+          <TriggerDraw
+            pending={state?.pendingDraw ?? null}
+            pendingStranded={state?.pendingStranded ?? null}
+          />
 
           <SettleDraw
             draw={state?.pendingDraw ?? null}
