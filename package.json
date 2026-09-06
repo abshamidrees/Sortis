@@ -14,7 +14,9 @@
     "deploy": "hardhat run scripts/deploy.ts",
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
     "live:sepolia": "hardhat run scripts/live.ts --network sepolia",
-    "settle": "hardhat run scripts/settle.ts --network sepolia"
+    "settle": "hardhat run scripts/settle.ts --network sepolia",
+    "fresh": "hardhat run scripts/fresh.ts --network sepolia",
+    "snapshot": "hardhat run scripts/snapshot.ts --network sepolia"
   },
   "devDependencies": {
     "@fhevm/hardhat-plugin": "^0.4.2",
