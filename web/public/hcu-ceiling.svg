@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs><style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&amp;family=Inter:wght@400;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap');
+text { font-family: Inter, system-ui, sans-serif; }
+</style></defs>
+<rect x="0" y="0" width="1600" height="900" fill="#F3F4F1"/>
+<rect x="40.5" y="40.5" width="1520" height="700" fill="none" stroke="#CDD2C9" stroke-width="1"/>
+<text x="72" y="94" font-family="Archivo" font-size="30" font-weight="600" fill="#1A1E1B">Hiding the winner has a measured ceiling</text>
+<rect x="1098" y="68" width="12" height="12" fill="#8C3A28"/>
+<text x="1118" y="78" font-family="IBM Plex Mono" font-size="13" fill="#1A1E1B">Linear scan, one dependent add per depositor</text>
+<text x="1528" y="78" text-anchor="end" font-family="IBM Plex Mono" font-size="13" font-weight="600" fill="#8C3A28">derived</text>
+<rect x="1098" y="96" width="12" height="12" fill="#A87A2E"/>
+<text x="1118" y="106" font-family="IBM Plex Mono" font-size="13" fill="#1A1E1B">Sortis, one encrypted descent per level</text>
+<text x="1528" y="106" text-anchor="end" font-family="IBM Plex Mono" font-size="13" font-weight="600" fill="#A87A2E">measured</text>
+<line x1="268" y1="568" x2="1388" y2="568" stroke="#CDD2C9" stroke-width="1"/>
+<text x="250" y="572" text-anchor="end" font-family="IBM Plex Mono" font-size="13" fill="#565C56" style="font-variant-numeric:tabular-nums">0</text>
+<line x1="268" y1="506" x2="1388" y2="506" stroke="#CDD2C9" stroke-width="1"/>
+<text x="250" y="510" text-anchor="end" font-family="IBM Plex Mono" font-size="13" fill="#565C56" style="font-variant-numeric:tabular-nums">1,000,000</text>
+<line x1="268" y1="444" x2="1388" y2="444" stroke="#CDD2C9" stroke-width="1"/>
+<text x="250" y="448" text-anchor="end" font-family="IBM Plex Mono" font-size="13" fill="#565C56" style="font-variant-numeric:tabular-nums">2,000,000</text>
+<line x1="268" y1="382" x2="1388" y2="382" stroke="#CDD2C9" stroke-width="1"/>
+<text x="250" y="386" text-anchor="end" font-family="IBM Plex Mono" font-size="13" fill="#565C56" style="font-variant-numeric:tabular-nums">3,000,000</text>
+<line x1="268" y1="320" x2="1388" y2="320" stroke="#CDD2C9" stroke-width="1"/>
+<text x="250" y="324" text-anchor="end" font-family="IBM Plex Mono" font-size="13" fill="#565C56" style="font-variant-numeric:tabular-nums">4,000,000</text>
+<line x1="268" y1="258" x2="1388" y2="258" stroke="#CDD2C9" stroke-width="1"/>
+<text x="250" y="262" text-anchor="end" font-family="IBM Plex Mono" font-size="13" fill="#565C56" style="font-variant-numeric:tabular-nums">5,000,000</text>
+<line x1="268" y1="196" x2="1388" y2="196" stroke="#CDD2C9" stroke-width="1"/>
+<text x="250" y="200" text-anchor="end" font-family="IBM Plex Mono" font-size="13" fill="#565C56" style="font-variant-numeric:tabular-nums">6,000,000</text>
+<text x="110" y="382" transform="rotate(-90 110 382)" text-anchor="middle" font-family="Inter" font-size="14" fill="#565C56">Sequential HCU</text>
+<line x1="268" y1="568" x2="268" y2="575" stroke="#CDD2C9" stroke-width="1"/>
+<text x="268" y="595" text-anchor="middle" font-family="IBM Plex Mono" font-size="14" fill="#1A1E1B" style="font-variant-numeric:tabular-nums">1</text>
+<line x1="641.3333333333333" y1="568" x2="641.3333333333333" y2="575" stroke="#CDD2C9" stroke-width="1"/>
+<text x="641.3333333333333" y="595" text-anchor="middle" font-family="IBM Plex Mono" font-size="14" fill="#1A1E1B" style="font-variant-numeric:tabular-nums">4</text>
+<line x1="828" y1="568" x2="828" y2="575" stroke="#CDD2C9" stroke-width="1"/>
+<text x="828" y="595" text-anchor="middle" font-family="IBM Plex Mono" font-size="14" fill="#1A1E1B" style="font-variant-numeric:tabular-nums">8</text>
+<line x1="1014.6666666666666" y1="568" x2="1014.6666666666666" y2="575" stroke="#CDD2C9" stroke-width="1"/>
+<text x="1014.6666666666666" y="595" text-anchor="middle" font-family="IBM Plex Mono" font-size="14" fill="#1A1E1B" style="font-variant-numeric:tabular-nums">16</text>
+<line x1="1201.3333333333335" y1="568" x2="1201.3333333333335" y2="575" stroke="#CDD2C9" stroke-width="1"/>
+<text x="1201.3333333333335" y="595" text-anchor="middle" font-family="IBM Plex Mono" font-size="14" fill="#1A1E1B" style="font-variant-numeric:tabular-nums">32</text>
+<line x1="1388" y1="568" x2="1388" y2="575" stroke="#CDD2C9" stroke-width="1"/>
+<text x="1388" y="595" text-anchor="middle" font-family="IBM Plex Mono" font-size="14" fill="#1A1E1B" style="font-variant-numeric:tabular-nums">64</text>
+<text x="828" y="620" text-anchor="middle" font-family="Inter" font-size="14" fill="#565C56">Stakes in the register</text>
+<line x1="268" y1="258" x2="1388" y2="258" stroke="#8C3A28" stroke-width="1.5" stroke-dasharray="7 4"/>
+<text x="282" y="245" font-family="IBM Plex Mono" font-size="14" font-weight="600" fill="#8C3A28" style="font-variant-numeric:tabular-nums">5,000,000 HCU. The transaction reverts here.</text>
+<polyline points="268,557.956 641.3333333333333,527.824 828,487.648 1014.6666666666666,407.296 1201.3333333333335,246.59199999999998 1240.7007327330757,196" fill="none" stroke="#8C3A28" stroke-width="2.5" stroke-dasharray="6 4"/>
+<polyline points="641.3333333333333,431.66200000000003 828,380.76 1014.6666666666666,335.624 1201.3333333333335,290.488" fill="none" stroke="#A87A2E" stroke-width="3"/>
+<line x1="1201.3333333333335" y1="290.488" x2="1388" y2="239.586" stroke="#A87A2E" stroke-width="3" stroke-dasharray="5 4" opacity="0.75"/>
+<circle cx="641.3333333333333" cy="431.66200000000003" r="5.5" fill="#A87A2E"/>
+<circle cx="828" cy="380.76" r="5.5" fill="#A87A2E"/>
+<circle cx="1014.6666666666666" cy="335.624" r="5.5" fill="#A87A2E"/>
+<circle cx="1201.3333333333335" cy="290.488" r="5.5" fill="#A87A2E"/>
+<circle cx="1388" cy="239.586" r="5.5" fill="#F3F4F1" stroke="#8C3A28" stroke-width="2.5"/>
+<line x1="1201.3333333333335" y1="290.488" x2="1201.3333333333335" y2="664" stroke="#A87A2E" stroke-width="1" stroke-dasharray="3 3"/>
+<text x="1187.3333333333335" y="668" text-anchor="end" font-family="IBM Plex Mono" font-size="14" font-weight="600" fill="#A87A2E" style="font-variant-numeric:tabular-nums">32 stakes, 4,476,000. One shard. This is what ships.</text>
+<text x="1252.7007327330757" y="212" font-family="IBM Plex Mono" font-size="13" font-weight="600" fill="#8C3A28">Linear scan, derived</text>
+<text x="1372" y="244.586" text-anchor="end" font-family="IBM Plex Mono" font-size="13" font-weight="600" fill="#A87A2E">Sortis, measured</text>
+<rect x="268.5" y="626.5" width="386" height="96" fill="none" stroke="#CDD2C9" stroke-width="1"/>
+<text x="286" y="652" font-family="IBM Plex Mono" font-size="13" font-weight="600" fill="#1A1E1B" letter-spacing="1.2">MEASURED ON CHAIN</text>
+<text x="286" y="676" font-family="IBM Plex Mono" font-size="13" fill="#565C56">predicted</text>
+<text x="398" y="676" font-family="IBM Plex Mono" font-size="13" fill="#1A1E1B" style="font-variant-numeric:tabular-nums">4,476,000</text>
+<text x="286" y="696" font-family="IBM Plex Mono" font-size="13" fill="#565C56">observed</text>
+<text x="398" y="696" font-family="IBM Plex Mono" font-size="13" fill="#1A1E1B" style="font-variant-numeric:tabular-nums">4,476,000</text>
+<text x="286" y="716" font-family="IBM Plex Mono" font-size="13" fill="#565C56">divergence</text>
+<text x="398" y="716" font-family="IBM Plex Mono" font-size="13" fill="#1A1E1B" style="font-variant-numeric:tabular-nums">0.00%, at the deployed height</text>
+<text x="40" y="784" font-family="Inter" font-size="13" fill="#565C56">Sequential HCU per draw against the FHEVM 5,000,000 depth limit. Walk height 5 at the deployed shard.</text>
+<text x="40" y="806" font-family="Inter" font-size="13" fill="#565C56">Sortis figures measured by sweeping register sizes until the walk reverts. The linear series is derived from a per-depositor constant of 162,000 HCU,</text>
+<text x="40" y="828" font-family="Inter" font-size="13" fill="#565C56">because a scan that reverts cannot be measured past the point it stops fitting. Reproduce with npm test.</text>
+</svg>

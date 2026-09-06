@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs><style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&amp;family=Inter:wght@400;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap');
+text { font-family: Inter, system-ui, sans-serif; }
+</style></defs>
+<rect x="0" y="0" width="1600" height="900" fill="#F3F4F1"/>
+<rect x="40.5" y="40.5" width="1520" height="700" fill="none" stroke="#CDD2C9" stroke-width="1"/>
+<text x="72" y="94" font-family="Archivo" font-size="30" font-weight="600" fill="#1A1E1B">What Sortis hides, and what it does not</text>
+<rect x="72.5" y="140.5" width="708" height="506" fill="none" stroke="#CDD2C9" stroke-width="1"/>
+<text x="96" y="169" font-family="IBM Plex Mono" font-size="13" font-weight="600" fill="#1A1E1B" letter-spacing="1.4">PRIVATE</text>
+<text x="756" y="169" text-anchor="end" font-family="IBM Plex Mono" font-size="13" fill="#565C56">encrypted</text>
+<line x1="72" y1="186" x2="780" y2="186" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="96" y="214" width="9" height="9" fill="#2F3E6B"/>
+<text x="118" y="224" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">Your deposit</text>
+<text x="118" y="250" font-family="IBM Plex Mono" font-size="13" fill="#565C56">euint64, encrypted in your wallet before it is sent</text>
+<line x1="72" y1="278" x2="780" y2="278" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="96" y="306" width="9" height="9" fill="#2F3E6B"/>
+<text x="118" y="316" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">Your balance</text>
+<text x="118" y="342" font-family="IBM Plex Mono" font-size="13" fill="#565C56">euint64, decryptable by you and nobody else</text>
+<line x1="72" y1="370" x2="780" y2="370" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="96" y="398" width="9" height="9" fill="#2F3E6B"/>
+<text x="118" y="408" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">Your weight</text>
+<text x="118" y="434" font-family="IBM Plex Mono" font-size="13" fill="#565C56">euint64, the time-weighted stake the draw reads</text>
+<line x1="72" y1="462" x2="780" y2="462" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="96" y="490" width="9" height="9" fill="#2F3E6B"/>
+<text x="118" y="500" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">Whether you won</text>
+<text x="118" y="526" font-family="IBM Plex Mono" font-size="13" fill="#565C56">the resolved leaf is an encrypted index</text>
+<line x1="72" y1="554" x2="780" y2="554" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="96" y="582" width="9" height="9" fill="#2F3E6B"/>
+<text x="118" y="592" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">What you were paid</text>
+<text x="118" y="618" font-family="IBM Plex Mono" font-size="13" fill="#565C56">a losing claim transfers an encrypted zero</text>
+<rect x="820.5" y="140.5" width="708" height="506" fill="none" stroke="#CDD2C9" stroke-width="1"/>
+<text x="844" y="169" font-family="IBM Plex Mono" font-size="13" font-weight="600" fill="#1A1E1B" letter-spacing="1.4">PUBLIC</text>
+<text x="1504" y="169" text-anchor="end" font-family="IBM Plex Mono" font-size="13" fill="#565C56">on chain</text>
+<line x1="820" y1="186" x2="1528" y2="186" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="844" y="214" width="9" height="9" fill="#A87A2E"/>
+<text x="866" y="224" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">The pot size</text>
+<text x="866" y="250" font-family="IBM Plex Mono" font-size="13" fill="#565C56">harvested yield, plaintext, so the draw can be checked</text>
+<line x1="820" y1="278" x2="1528" y2="278" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="844" y="306" width="9" height="9" fill="#A87A2E"/>
+<text x="866" y="316" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">The tree root</text>
+<text x="866" y="342" font-family="IBM Plex Mono" font-size="13" fill="#565C56">a handle, published when the draw opens</text>
+<line x1="820" y1="370" x2="1528" y2="370" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="844" y="398" width="9" height="9" fill="#A87A2E"/>
+<text x="866" y="408" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">The block</text>
+<text x="866" y="434" font-family="IBM Plex Mono" font-size="13" fill="#565C56">the lot must come from a later one</text>
+<line x1="820" y1="462" x2="1528" y2="462" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="844" y="490" width="9" height="9" fill="#A87A2E"/>
+<text x="866" y="500" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">That a draw happened</text>
+<text x="866" y="526" font-family="IBM Plex Mono" font-size="13" fill="#565C56">anyone can verify the walk ran against that root</text>
+<line x1="820" y1="554" x2="1528" y2="554" stroke="#CDD2C9" stroke-width="1"/>
+<rect x="844" y="582" width="9" height="9" fill="#A87A2E"/>
+<text x="866" y="592" font-family="Inter" font-size="17" font-weight="600" fill="#1A1E1B">That you interacted</text>
+<text x="866" y="618" font-family="IBM Plex Mono" font-size="13" fill="#565C56">your address, the time, and the direction</text>
+<text x="72" y="702" font-family="IBM Plex Mono" font-size="14" fill="#1A1E1B">The right-hand column is deliberate. A draw nobody can check is not worth having.</text>
+<text x="40" y="786" font-family="Inter" font-size="13" fill="#565C56">Sortis, confidential prize savings on the Zama Protocol. Deployed on Sepolia.</text>
+<text x="40" y="810" font-family="Inter" font-size="13" fill="#565C56">The last public row is the honest one: interaction is visible, amounts are not.</text>
+</svg>
